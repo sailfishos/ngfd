@@ -22,6 +22,7 @@
 #include <ngf/plugin.h>
 
 #include <stdlib.h>
+#include <string.h>
 #include <glib.h>
 #include <gst/gst.h>
 #include <gst/controller/gstinterpolationcontrolsource.h>
