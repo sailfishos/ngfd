@@ -43,6 +43,16 @@ N_PLUGIN_VERSION     ("0.1")
 N_PLUGIN_DESCRIPTION ("libcanberra plugin")
 
 static ca_context *c_context = NULL;
+static GHashTable *cached_samples = NULL;
+static gboolean support_cached_samples = TRUE;
+
+static void canberra_disconnect ()
+{
+    if (c_context) {
+        ca_context_destroy (c_context);
+        c_context = NULL;
+    }
+}
 
 static int canberra_connect ()
 {
@@ -51,12 +61,13 @@ static int canberra_connect ()
     if (c_context)
         return TRUE;
 
+    g_hash_table_remove_all (cached_samples);
     ca_context_create (&c_context);
     error = ca_context_open (c_context);
     if (error) {
         N_WARNING (LOG_CAT "can't connect to canberra! %s", ca_strerror (error));
         ca_context_destroy (c_context);
-        c_context = 0;
+        c_context = NULL;
         return FALSE;
     }
 
@@ -68,6 +79,11 @@ canberra_sink_initialize (NSinkInterface *iface)
 {
     (void) iface;
     N_DEBUG (LOG_CAT "sink initialize");
+
+    /* Only provide free function for key, since both key and value are same
+     * string. */
+    cached_samples = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+    support_cached_samples = TRUE;
     canberra_connect ();
     return TRUE;
 }
@@ -77,6 +93,12 @@ canberra_sink_shutdown (NSinkInterface *iface)
 {
     (void) iface;
     N_DEBUG (LOG_CAT "sink shutdown");
+
+    canberra_disconnect ();
+    if (cached_samples) {
+        g_hash_table_destroy (cached_samples);
+        cached_samples = NULL;
+    }
 }
 
 static int
@@ -162,11 +184,6 @@ canberra_sink_play (NSinkInterface *iface, NRequest *request)
     if (canberra_connect () == FALSE)
         return FALSE;
 
-    static GHashTable *cached_samples = NULL;
-    if (!cached_samples) {
-        cached_samples = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
-    }
-
     NProplist *props = props = (NProplist*) n_request_get_properties (request);
     ca_proplist *ca_props = 0;
     int error;
@@ -175,38 +192,34 @@ canberra_sink_play (NSinkInterface *iface, NRequest *request)
     /* TODO: don't hardcode */
     ca_proplist_sets (ca_props, CA_PROP_CANBERRA_XDG_THEME_NAME, "jolla-ambient");
     ca_proplist_sets (ca_props, CA_PROP_EVENT_ID, data->filename);
+    if (support_cached_samples)
+        ca_proplist_sets (ca_props, CA_PROP_CANBERRA_CACHE_CONTROL, "permanent");
 
     /* convert all properties within the request that begin with
        "sound.stream." prefix. */
     n_proplist_foreach (props, proplist_to_structure_cb, ca_props);
 
-    if (g_hash_table_lookup_extended (cached_samples, data->filename, NULL, NULL) == FALSE) {
+    if (support_cached_samples && !g_hash_table_contains(cached_samples, data->filename)) {
         N_DEBUG (LOG_CAT "caching sample %s", data->filename);
         error = ca_context_cache_full (c_context, ca_props);
-        if (error) {
-            N_WARNING (LOG_CAT "canberra couldn't cache sample %s", data->filename);
+        if (error == CA_ERROR_NOTSUPPORTED) {
+            N_WARNING (LOG_CAT "sample caching not supported by backend. disabling for the duration of plugin.");
+            support_cached_samples = FALSE;
+        } else if (error != CA_SUCCESS) {
+            N_WARNING (LOG_CAT "canberra couldn't cache sample %s (%d: %s)", data->filename, -error, ca_strerror(error));
+            ca_proplist_destroy (ca_props);
+            canberra_disconnect ();
             return FALSE;
-        }
-
-        g_hash_table_add (cached_samples, strdup(data->filename));
-    } else {
-        N_DEBUG (LOG_CAT "sample %s is cached", data->filename);
+        } else
+            g_hash_table_add (cached_samples, g_strdup(data->filename));
     }
 
     error = ca_context_play_full (c_context, 0, ca_props, NULL, NULL);
     ca_proplist_destroy (ca_props);
 
-    if (error) {
+    if (error != CA_SUCCESS) {
         N_WARNING (LOG_CAT "sink play had a warning: %s", ca_strerror (error));
-
-        if (error == CA_ERROR_NOTAVAILABLE ||
-            error == CA_ERROR_DISCONNECTED ||
-            error == CA_ERROR_STATE ||
-            error == CA_ERROR_DESTROYED) {
-            ca_context_destroy (c_context);
-            c_context = 0;
-        }
-
+        canberra_disconnect ();
         return FALSE;
     }
 
