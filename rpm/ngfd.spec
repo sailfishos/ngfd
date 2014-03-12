@@ -88,6 +88,8 @@ rm -rf %{buildroot}
 install -D -m 644 %{SOURCE1} %{buildroot}%{_libdir}/systemd/user/ngfd.service
 mkdir -p %{buildroot}%{_libdir}/systemd/user/user-session.target.wants
 ln -s ../ngfd.service %{buildroot}%{_libdir}/systemd/user/user-session.target.wants/
+mkdir -p %{buildroot}%{_libdir}/systemd/user/actdead-session.target.wants
+ln -s ../ngfd.service %{buildroot}%{_libdir}/systemd/user/actdead-session.target.wants/
 
 %post
 if [ "$1" -ge 1 ]; then
@@ -120,6 +122,7 @@ fi
 %{_libdir}/ngf/libngfd_ffmemless.so
 %{_libdir}/systemd/user/ngfd.service
 %{_libdir}/systemd/user/user-session.target.wants/ngfd.service
+%{_libdir}/systemd/user/actdead-session.target.wants/ngfd.service
 
 %files plugin-devel
 %defattr(-,root,root,-)
