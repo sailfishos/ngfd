@@ -41,6 +41,7 @@ typedef struct _MceData
 } MceData;
 
 DBusConnection *bus = NULL;
+GList *active_events = NULL;
 
 static gboolean
 call_dbus_method (DBusConnection *bus, DBusMessage *msg)
@@ -101,6 +102,39 @@ toggle_pattern (const char *pattern, gboolean activate)
     return ret;
 }
 
+static DBusHandlerResult
+mce_signal_filter (DBusConnection *connection, DBusMessage *msg, void *user_data)
+{
+    (void) connection;
+    (void) user_data;
+
+    if (dbus_message_is_signal(msg, MCE_SIGNAL_IF, MCE_LED_PATTERN_DEACTIVATED_SIG)) {
+        DBusError error;
+        dbus_error_init(&error);
+
+        gchar *pattern = NULL;
+
+        if (!dbus_message_get_args(msg, &error, DBUS_TYPE_STRING, &pattern, DBUS_TYPE_INVALID)) {
+            N_WARNING ("%s >> failed to read MCE signal arguments, cause: %s", __FUNCTION__, error.message);
+            dbus_error_free(&error);
+        } else {
+            GList *event;
+            N_DEBUG ("%s >> mce finished playing %s", __FUNCTION__, pattern);
+            for (event = active_events; event != NULL; event = g_list_next(event)) {
+                MceData *data = (MceData *) event->data;
+                if (g_strcmp0(pattern, data->pattern) == 0) {
+                    n_sink_interface_complete(data->iface, data->request);
+                    N_DEBUG ("%s >> led pattern %s complete", __FUNCTION__, data->pattern);
+                    active_events = g_list_remove_all(active_events, data);
+                    break;
+                }
+            }
+        }
+    }
+
+    return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+}
+
 static int
 mce_sink_initialize (NSinkInterface *iface)
 {
@@ -110,11 +144,21 @@ mce_sink_initialize (NSinkInterface *iface)
     dbus_error_init (&error);
     bus = dbus_bus_get (DBUS_BUS_SYSTEM, &error);
     if (bus == NULL) {
-        N_WARNING ("%s >> failed to get system bus: %s",error.message);
+        N_WARNING ("%s >> failed to get system bus: %s", __FUNCTION__, error.message);
         dbus_error_free (&error);
         return FALSE;
     }
-    
+
+    char *rule = "type='signal',interface='" MCE_SIGNAL_IF "'";
+    dbus_bus_add_match(bus, rule, &error);
+    if (dbus_error_is_set(&error)) {
+        N_WARNING ("%s >> failed to add D-BUS match rule, cause: %s", __FUNCTION__, error.message);
+        dbus_error_free (&error);
+        return FALSE;
+    }
+
+    dbus_connection_add_filter(bus, mce_signal_filter, NULL, NULL);
+
     return TRUE;
 }
 
@@ -122,6 +166,7 @@ static void
 mce_sink_shutdown (NSinkInterface *iface)
 {
     (void) iface;
+    g_list_free(active_events);
 }
 
 static int
@@ -160,7 +205,14 @@ mce_playback_done(gpointer userdata)
     MceData *data = (MceData *) userdata;
 
     data->timeout_id = 0;
-    n_sink_interface_complete(data->iface, data->request);
+    const NProplist *props = n_request_get_properties (data->request);
+    if (data->pattern && n_proplist_get_bool (props, "mce.clear_pattern")) {
+        N_DEBUG ("%s >> waiting for MCE to stop playback of led pattern %s", __FUNCTION__, data->pattern);
+        active_events = g_list_append(active_events, data);
+    } else {
+        n_sink_interface_complete(data->iface, data->request);
+        N_DEBUG ("%s >> led pattern %s complete", __FUNCTION__, data->pattern);
+    }
 
     return FALSE;
 }
@@ -187,7 +239,7 @@ mce_sink_play (NSinkInterface *iface, NRequest *request)
         }
     }
 
-    /* Call n_sink_interface_complete() after 100ms. */
+    /* Call n_sink_interface_complete() after 100ms if MCE is not responsible of stopping the playback. */
     data->timeout_id = g_timeout_add(100, mce_playback_done, data);
 
     return TRUE;
@@ -219,6 +271,7 @@ mce_sink_stop (NSinkInterface *iface, NRequest *request)
         data->pattern = NULL;
     }
 
+    active_events = g_list_remove_all(active_events, data);
     g_slice_free (MceData, data);
 }
 
