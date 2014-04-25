@@ -11,5 +11,6 @@ library_include_HEADERS = \
     sinkinterface.h \
     value.h \
     core-hooks.h \
+    haptic.h \
     hook.h
 

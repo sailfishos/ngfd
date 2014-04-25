@@ -25,6 +25,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <ngf/plugin.h>
+#include <ngf/haptic.h>
 #include <linux/input.h>
 
 #include "ffmemless.h"
@@ -551,52 +552,19 @@ static void ffm_sink_shutdown(NSinkInterface *iface)
 static int ffm_sink_can_handle(NSinkInterface *iface, NRequest *request)
 {
 	const NProplist *props = n_request_get_properties (request);
-	(void) iface;
-	NCore    *core    = n_sink_interface_get_core     (iface);
-	NContext *context = n_core_get_context            (core);
-	NValue   *enabled = NULL;
-	NValue   *touch_level = NULL;
-	NValue   *call_state = NULL;
-	const struct ffm_effect_data *data;
 	const gchar *key;
 
+	// Filter based on settings and call state
+	if (!n_haptic_can_handle (iface, request)) {
+		N_DEBUG (LOG_CAT "Event filtered by haptic rules");
+		return FALSE;
+	}
+
 	N_DEBUG (LOG_CAT "can handle %s?", n_request_get_name(request));
-
-	enabled = (NValue*) n_context_get_value (context,
-		"profile.current.vibrating.alert.enabled");
-	touch_level = (NValue*) n_context_get_value (context,
-		"profile.current.touchscreen.vibration.level");
-
-	call_state = (NValue*) n_context_get_value (context,
-		"call_state.mode");
-
-	if (touch_level == NULL) {
-		N_WARNING (LOG_CAT "No value for touchscreen.vibration.level!");
-	}
-
-	if (call_state == NULL) {
-		N_WARNING (LOG_CAT "Call state not available!");
-	}
-
-	if (!enabled || !n_value_get_bool (enabled)) {
-		N_DEBUG (LOG_CAT "no, vibration disabled in profile");
-		return FALSE;
-	}
-
-	if (call_state && !strcmp(n_value_get_string(call_state), "active")) {
-		N_DEBUG (LOG_CAT "no, should not vibrate during call");
-		return FALSE;
-	}
 
 	key = n_proplist_get_string(props, FFM_EFFECT_KEY);
 	if (key == NULL) {
 		N_DEBUG (LOG_CAT "No, effect key missing");
-		return FALSE;
-	}
-
-	data = g_hash_table_lookup(ffm.effects, key);
-	if (data->touch_effect && n_value_get_int(touch_level) == 0) {
-		N_DEBUG (LOG_CAT "No, touch vibra level at 0, skipping vibra");
 		return FALSE;
 	}
 
