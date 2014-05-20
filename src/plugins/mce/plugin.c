@@ -25,8 +25,6 @@
 #include <mce/dbus-names.h>
 
 #define MCE_KEY "plugin.mce.data"
-#define LOG_CAT "mce: "
-#define DISPLAY_BLANK_TIMEOUT 50
 
 N_PLUGIN_NAME        ("mce")
 N_PLUGIN_VERSION     ("0.1")
@@ -37,7 +35,6 @@ typedef struct _MceData
     NRequest       *request;
     NSinkInterface *iface;
     gchar          *pattern;
-    guint           timeout_id;
 } MceData;
 
 DBusConnection *bus = NULL;
@@ -199,24 +196,6 @@ mce_sink_prepare (NSinkInterface *iface, NRequest *request)
     return TRUE;
 }
 
-static gboolean
-mce_playback_done(gpointer userdata)
-{
-    MceData *data = (MceData *) userdata;
-
-    data->timeout_id = 0;
-    const NProplist *props = n_request_get_properties (data->request);
-    if (data->pattern && n_proplist_get_bool (props, "mce.clear_pattern")) {
-        N_DEBUG ("%s >> waiting for MCE to stop playback of led pattern %s", __FUNCTION__, data->pattern);
-        active_events = g_list_append(active_events, data);
-    } else {
-        n_sink_interface_complete(data->iface, data->request);
-        N_DEBUG ("%s >> led pattern %s complete", __FUNCTION__, data->pattern);
-    }
-
-    return FALSE;
-}
-
 static int
 mce_sink_play (NSinkInterface *iface, NRequest *request)
 {
@@ -233,14 +212,13 @@ mce_sink_play (NSinkInterface *iface, NRequest *request)
     pattern = n_proplist_get_string (props, "mce.led_pattern");
     if (pattern != NULL) {
         data->pattern = g_strdup (pattern);
-        if (!toggle_pattern (pattern, TRUE)) {
+        if (toggle_pattern (pattern, TRUE)) {
+            active_events = g_list_append(active_events, data);
+        } else {
             g_free (data->pattern);
             data->pattern = NULL;
         }
     }
-
-    /* Call n_sink_interface_complete() after 100ms if MCE is not responsible of stopping the playback. */
-    data->timeout_id = g_timeout_add(100, mce_playback_done, data);
 
     return TRUE;
 }
@@ -263,10 +241,7 @@ mce_sink_stop (NSinkInterface *iface, NRequest *request)
     g_assert (data != NULL);
 
     if (data->pattern) {
-        const NProplist *props = n_request_get_properties (request);
-        /* Unless specified otherwise, we'll let MCE clear the pattern */
-        if (n_proplist_get_bool (props, "mce.clear_pattern"))
-            toggle_pattern (data->pattern, FALSE);
+        toggle_pattern (data->pattern, FALSE);
         g_free (data->pattern);
         data->pattern = NULL;
     }
