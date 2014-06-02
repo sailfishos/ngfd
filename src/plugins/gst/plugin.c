@@ -104,6 +104,7 @@ static FadeEffect* parse_volume_fade (const char *str);
 static void set_fade_effect (GstInterpolationControlSource *source, FadeEffect *effect);
 static void update_fade_effect (FadeEffect *effect, gdouble elapsed, gdouble volume);
 static void free_fade_effect (FadeEffect *effect);
+static void cleanup (StreamData *stream);
 
 static gboolean system_sounds_enabled = TRUE;
 static guint system_sounds_level = 0;
@@ -436,6 +437,8 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
             }
 
             N_DEBUG (LOG_CAT "eos");
+            /* Free the pipeline already here */
+            cleanup (stream);
             n_sink_interface_complete (stream->iface, stream->request);
             return FALSE;
         }
@@ -931,6 +934,20 @@ gst_sink_pause (NSinkInterface *iface, NRequest *request)
 }
 
 static void
+cleanup (StreamData *stream)
+{
+    free_pipeline (stream);
+    free_stream_properties (stream->properties);
+    stream->properties = NULL;
+
+    free_fade_effect (stream->fade_out);
+    stream->fade_out = NULL;
+
+    free_fade_effect (stream->fade_in);
+    stream->fade_in = NULL;
+}
+
+static void
 gst_sink_stop (NSinkInterface *iface, NRequest *request)
 {
     (void) iface;
@@ -945,14 +962,7 @@ gst_sink_stop (NSinkInterface *iface, NRequest *request)
         stream->restart_source_id = 0;
     }
 
-    free_pipeline (stream);
-    free_stream_properties (stream->properties);
-
-    free_fade_effect (stream->fade_out);
-    stream->fade_out = NULL;
-
-    free_fade_effect (stream->fade_in);
-    stream->fade_in = NULL;
+    cleanup (stream);
 
     g_slice_free (StreamData, stream);
 }
