@@ -27,12 +27,27 @@
 #define LOG_CAT         "stream-restore: "
 #define ROLE_KEY_PREFIX "role."
 #define SET_KEY_PREFIX  "set."
+#define TRANSFORM_KEY_PREFIX  "transform."
+
+#define CLAMP_VALUE(in_v,in_min,in_max) \
+    ((in_v) <= (in_min) ? (in_min) : ((in_v) >= (in_max) ? (in_max) : (in_v)))
+
+#define BASE_VOLUME(base, max, volume) (base + volume * (max - base) / 100)
 
 N_PLUGIN_NAME        ("stream-restore")
-N_PLUGIN_VERSION     ("0.1")
+N_PLUGIN_VERSION     ("0.2")
 N_PLUGIN_DESCRIPTION ("Volumes using Pulseaudio DBus stream restore")
 
+typedef struct transform_entry {
+    char *name;
+    char *src;
+    char *dst;
+    int base;
+    int max;
+} transform_entry;
+
 static GHashTable *stream_restore_role_map = NULL;
+static GList      *transform_entries       = NULL; /* contains transform_entry entries */
 
 static void
 init_done_cb (NHook *hook, void *data, void *userdata)
@@ -73,6 +88,78 @@ init_done_cb (NHook *hook, void *data, void *userdata)
 }
 
 static void
+transform_entry_free (transform_entry *entry)
+{
+    if (entry) {
+        if (entry->name)
+            g_free (entry->name);
+        if (entry->src)
+            g_free (entry->src);
+        if (entry->dst)
+            g_free (entry->dst);
+        g_free (entry);
+    }
+}
+
+static void
+volume_changed_cb (const char *stream_name, int volume, transform_entry *entry, void *userdata)
+{
+    int new_volume;
+
+    (void) userdata;
+
+    new_volume = BASE_VOLUME(entry->base, entry->max, volume);
+
+    N_DEBUG (LOG_CAT "stream %s value changed to %d - set %s %d", stream_name, volume, entry->dst, new_volume);
+    (void) volume_controller_update (entry->dst, new_volume);
+}
+
+static void
+add_transform_entry (const char *name, const char *values)
+{
+    transform_entry *entry = NULL;
+    gchar **split = NULL;
+    gchar **iter  = NULL;
+    int field = 0;
+
+    g_assert (name);
+    g_assert (values);
+
+    N_DEBUG (LOG_CAT "add transform entry %s : %s", name, values);
+
+    entry = (transform_entry*) g_malloc0 (sizeof (transform_entry));
+    entry->name = g_strdup (name);
+
+    split = g_strsplit (values, ";", -1);
+    for (iter = split; *iter; ++iter) {
+        switch (field) {
+            case 0: entry->src = g_strdup (*iter); break;
+            case 1: entry->dst = g_strdup (*iter); break;
+            case 2: entry->base = CLAMP_VALUE (atoi (*iter), 0, 100); break;
+            case 3: entry->max  = CLAMP_VALUE (atoi (*iter), 0, 100); break;
+            default: goto error; /* too many fields */
+        }
+        field++;
+    }
+
+    if (field != 4)
+        goto error;
+
+    g_strfreev (split);
+
+    transform_entries = g_list_append (transform_entries, entry);
+    volume_controller_set_subscribe_cb ((volume_controller_subscribe_cb) volume_changed_cb, NULL);
+    volume_controller_subscribe (entry->src, entry);
+    return;
+
+error:
+    if (split)
+        g_strfreev (split);
+    N_WARNING (LOG_CAT "bad transform entry %s : %s", name, values);
+    transform_entry_free (entry);
+}
+
+static void
 volume_add_role_key_cb (const char *key, const NValue *value, gpointer userdata)
 {
     (void) key;
@@ -97,6 +184,11 @@ volume_add_role_key_cb (const char *key, const NValue *value, gpointer userdata)
             volume = atoi (n_value_get_string ((NValue*) value));
             (void) volume_controller_update (new_key, volume);
         }
+    } else if (g_str_has_prefix (key, TRANSFORM_KEY_PREFIX)) {
+        new_key = (const char*) key + strlen (TRANSFORM_KEY_PREFIX);
+
+        if (new_key)
+            add_transform_entry (new_key, n_value_get_string ((const NValue*) value));
     }
 }
 
@@ -158,6 +250,13 @@ N_PLUGIN_LOAD (plugin)
     return TRUE;
 }
 
+static void
+transform_entry_unsubscribe_free (transform_entry *entry)
+{
+    volume_controller_unsubscribe (entry->src);
+    transform_entry_free (entry);
+}
+
 N_PLUGIN_UNLOAD (plugin)
 {
     (void) plugin;
@@ -165,6 +264,11 @@ N_PLUGIN_UNLOAD (plugin)
     if (stream_restore_role_map) {
         g_hash_table_destroy (stream_restore_role_map);
         stream_restore_role_map = NULL;
+    }
+    if (transform_entries) {
+        volume_controller_set_subscribe_cb (NULL, NULL);
+        g_list_free_full (transform_entries, (GDestroyNotify) transform_entry_unsubscribe_free);
+        transform_entries = NULL;
     }
 
     volume_controller_shutdown ();

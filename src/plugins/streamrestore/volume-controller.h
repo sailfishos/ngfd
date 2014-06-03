@@ -22,8 +22,18 @@
 #ifndef VOLUME_CONTROLLER_H
 #define VOLUME_CONTROLLER_H
 
+// Called when volume entry with stream name changes.
+// stream_name      name of the stream
+// volume           new volume in range 0..100
+// data             data passed to volume_controller_subscribe ()
+// userdata         userdata passed to volume_controller_set_subscribe_cb ()
+typedef void (*volume_controller_subscribe_cb) (const char *stream_name, int volume, void *data, void *userdata);
+
 int  volume_controller_initialize ();
 void volume_controller_shutdown   ();
 int  volume_controller_update     (const char *role, int volume);
+void volume_controller_subscribe  (const char *stream_name, void *data);
+void volume_controller_unsubscribe(const char *stream_name);
+void volume_controller_set_subscribe_cb (volume_controller_subscribe_cb cb, void *userdata);
 
 #endif /* VOLUME_CONTROLLER_H */
