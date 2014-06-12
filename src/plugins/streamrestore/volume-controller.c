@@ -247,18 +247,21 @@ filter_cb (DBusConnection *connection, DBusMessage *msg, void *data)
             RETRY_TIMEOUT);
 
         disconnect_from_pulseaudio ();
-        // After disconnecting re-query stream restore object names.
-        list = g_hash_table_get_values (subscribe_map);
 
-        for (i = g_list_first (list); i; i = g_list_next (i)) {
-            SubscribeItem *item = (SubscribeItem*) i->data;
-            if (item->object_path) {
-                g_free (item->object_path);
-                item->object_path = NULL;
+        // After disconnecting re-query stream restore object names.
+        if (subscribe_map && object_map) {
+            list = g_hash_table_get_values (subscribe_map);
+
+            for (i = g_list_first (list); i; i = g_list_next (i)) {
+                SubscribeItem *item = (SubscribeItem*) i->data;
+                if (item->object_path) {
+                    g_free (item->object_path);
+                    item->object_path = NULL;
+                }
             }
+            g_list_free (list);
+            queue_subscribe = TRUE;
         }
-        g_list_free (list);
-        queue_subscribe = TRUE;
         // If PulseAudio is restarting path to runtime files may change so we'll
         // have to request DBus address again.
         if (volume_pulse_address) {
@@ -614,9 +617,8 @@ update_object_map_listen ()
     GList *subscription_items, *i;
     int j = 0;
 
-    g_assert (volume_bus);
-    g_assert (subscribe_map);
-    g_assert (object_map);
+    if (!volume_bus || !subscribe_map || !object_map)
+        return;
 
     g_hash_table_remove_all (object_map);
     obj_paths = g_malloc0 (sizeof (char*) * (g_hash_table_size (subscribe_map) + 1));
