@@ -51,14 +51,13 @@
 
 N_PLUGIN_NAME(FFM_PLUGIN_NAME)
 N_PLUGIN_DESCRIPTION("Vibra plugin using ff-memless kernel backend")
-N_PLUGIN_VERSION("0.9")
+N_PLUGIN_VERSION("0.10")
 
 struct ffm_effect_data {
 	NRequest       *request;
 	NSinkInterface *iface;
 	int id;
 	int repeat;
-	int touch_effect;
 	guint playback_time;
 	int poll_id;
 };
@@ -339,9 +338,6 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 
 		data->repeat = ffm_get_int_value(props, key, "_REPEAT", 1,
 								 INT32_MAX);
-		data->touch_effect = ffm_get_int_value(props, key, "_TOUCH", 0,
-								 1);
-		N_DEBUG (LOG_CAT "Got touch_effect = %d", data->touch_effect);
 
 		ff.replay.delay = ffm_get_int_value(props, key,
 						"_DELAY", 0, UINT16_MAX);

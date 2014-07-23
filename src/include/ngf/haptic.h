@@ -31,6 +31,26 @@
 #include <ngf/inputinterface.h>
 
 /**
+ * The haptic.type key tells what kind of haptic event this is
+ *
+ * Each bracketed event definition in events.d config files that needs
+ * haptic/vibra playback should contain "haptic.type" line to define what kind
+ * of haptic event it is.
+ *
+ * Supported type strings are currently:
+ *   "alarm" - for most vibration effects
+ *   "touch" - for events that only play when user touches touchscreen.
+ *
+ * The haptic event type is used to filter out playback in case user has
+ * disabled the setting for certain type of haptic feedback.
+ */
+#define HAPTIC_TYPE_KEY	"haptic.type"
+
+/* Convenience macros for supported haptic types */
+#define HAPTIC_TYPE_ALARM	"alarm"
+#define HAPTIC_TYPE_TOUCH	"touch"
+
+/**
  * Convenience function to filter haptic depending on settings and call state
  *
  * This function should be used by all haptic feedback plugins in their
