@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -19,32 +20,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
 USA.
 *************************************************************************/
 
-#define _GNU_SOURCE
-
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <stdbool.h>
 
-#include <log/log.h>
+#include <ngf/request.h>
+#include <ngf/proplist.h>
+#include <ngf/log.h>
 #include <trace/trace.h>
 
 #include "tonegend.h"
 #include "dbusif.h"
 
-#define LOG_ERROR(f, args...) log_error(logctx, f, ##args)
-#define LOG_INFO(f, args...) log_error(logctx, f, ##args)
-#define LOG_WARNING(f, args...) log_error(logctx, f, ##args)
-
-#define TRACE(f, args...) trace_write(trctx, trflags, trkeys, f, ##args)
+#define LOG_CAT "tonegen-dbusif: "
 
 static DBusHandlerResult handle_message(DBusConnection *,DBusMessage *,void *);
-static gchar *create_key(gchar *, gchar *, gchar *);
+static gchar *create_key(const gchar *memb, const gchar *sign, const gchar *intf);
 static void destroy_key(gpointer);
 
-
-static char *path    = "/com/Nokia/Telephony/Tones";
-static char *service = "com.Nokia.Telephony.Tones";
 
 int dbusif_init(int argc, char **argv)
 {
@@ -61,25 +56,19 @@ void dbsuif_exit(void)
 
 struct dbusif *dbusif_create(struct tonegend *tonegend)
 {
-    static struct DBusObjectPathVTable method = {
-        .message_function = &handle_message
-    };
-
     struct dbusif   *dbusif = NULL;
     DBusConnection  *conn   = NULL;
     DBusError        err;
-    int              ret;
 
-    if ((dbusif = (struct dbusif *)malloc(sizeof(*dbusif))) == NULL) {
-        LOG_ERROR("%s(): Can't allocate memory", __FUNCTION__);
+    if ((dbusif = (struct dbusif *) calloc(1, sizeof(struct dbusif))) == NULL) {
+        N_ERROR(LOG_CAT "%s(): Can't allocate memory", __FUNCTION__);
         goto failed;
     }
-    memset(dbusif, 0, sizeof(*dbusif));
 
     dbus_error_init(&err);
 
     if ((conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err)) == NULL) {
-        LOG_ERROR("%s(): Can't connect to D-Bus daemon: %s",
+        N_ERROR(LOG_CAT "%s(): Can't connect to D-Bus daemon: %s",
                   __FUNCTION__, err.message);
         dbus_error_free(&err);
         goto failed;
@@ -94,34 +83,63 @@ struct dbusif *dbusif_create(struct tonegend *tonegend)
 
     dbus_connection_setup_with_g_main(conn, NULL);
 
-    if (!dbus_connection_register_object_path(conn, path, &method, dbusif)) {
-        LOG_ERROR("%s(): failed to register object path", __FUNCTION__);
-        goto failed;
-    }
-
-    ret = dbus_bus_request_name(conn, service, DBUS_NAME_FLAG_REPLACE_EXISTING,
-                                &err);
-    if (ret < 0) {
-        LOG_ERROR("%s(): request name failed: %s", __FUNCTION__, err.message);
-        dbus_error_free(&err);
-        goto failed;
-    }
-    if (ret != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER) {
-        LOG_ERROR("%s(): not a primary owner", __FUNCTION__);
-        goto failed;
-    }
-
     dbusif->tonegend = tonegend;
     dbusif->conn   = conn;
-    dbusif->hash   = g_hash_table_new_full(g_str_hash, g_str_equal,
-                                           destroy_key, NULL);
-    LOG_INFO("D-Bus setup OK");
+
+    N_DEBUG(LOG_CAT "D-Bus setup OK");
 
     return dbusif;
 
  failed:
     if (dbusif != NULL)
         free(dbusif);
+
+    return NULL;
+}
+
+struct dbusif *dbusif_create_full(struct tonegend *tonegend)
+{
+    static struct DBusObjectPathVTable method = {
+        .message_function = handle_message
+    };
+
+    struct dbusif   *dbusif = NULL;
+    DBusError        err;
+    int              ret;
+
+    if (!(dbusif = dbusif_create(tonegend)))
+        goto failed;
+
+    if (!dbus_connection_register_object_path(dbusif->conn, TELEPHONY_TONES_PATH, &method, dbusif)) {
+        N_ERROR(LOG_CAT "%s(): failed to register object path", __FUNCTION__);
+        goto failed;
+    }
+
+    dbus_error_init(&err);
+    ret = dbus_bus_request_name(dbusif->conn, TELEPHONY_TONES_SERVICE, DBUS_NAME_FLAG_REPLACE_EXISTING,
+                                &err);
+    if (ret < 0) {
+        N_ERROR(LOG_CAT "%s(): request name failed: %s", __FUNCTION__, err.message);
+        dbus_error_free(&err);
+        goto failed;
+    }
+    if (ret != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER) {
+        N_ERROR(LOG_CAT "%s(): not a primary owner", __FUNCTION__);
+        goto failed;
+    }
+
+    dbusif->hash   = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                           destroy_key, NULL);
+    N_DEBUG(LOG_CAT "D-Bus legacy API setup OK");
+
+    return dbusif;
+
+ failed:
+    if (dbusif != NULL) {
+        if (dbusif->conn)
+            dbus_connection_unref(dbusif->conn);
+        free(dbusif);
+    }
 
     return NULL;
 }
@@ -139,30 +157,30 @@ void dbusif_destroy(struct dbusif *dbusif)
 
 
 int dbusif_register_input_method(struct tonegend *tonegend,
-                                 char *intf, char *memb, char *sig,
+                                 const char *intf, const char *memb, const char *sig,
                                  int (*method)(DBusMessage*, struct tonegend*))
 {
     struct dbusif *dbusif = tonegend->dbus_ctx;
     gchar         *key;
 
     if (!memb || !sig || !method) {
-        LOG_ERROR("%s(): Called with invalid argument(s)", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): Called with invalid argument(s)", __FUNCTION__);
         errno = EINVAL;
         return -1;
     }
 
     if (intf == NULL)
-        intf = service;
+        intf = TELEPHONY_TONES_SERVICE;
 
-    key = create_key((gchar *)memb, (gchar *)sig, (gchar *)intf);
+    key = create_key((const gchar *)memb, (const gchar *)sig, (const gchar *)intf);
     g_hash_table_insert(dbusif->hash, key, (gpointer)method);
 
     return 0;
 }
 
 
-int dbusif_unregister_input_method(struct tonegend *tonegend, char *intf,
-                                   char *memb, char *sign)
+int dbusif_unregister_input_method(struct tonegend *tonegend, const char *intf,
+                                   const char *memb, const char *sign)
 {
     (void)tonegend;
     (void)intf;
@@ -172,42 +190,37 @@ int dbusif_unregister_input_method(struct tonegend *tonegend, char *intf,
     return 0;
 }
 
-int dbusif_send_signal(struct tonegend *tonegend, char *intf, char *name,
+int dbusif_send_signal(struct tonegend *tonegend, const char *intf, const char *name,
                        int first_arg_type, ...)
 {
     struct dbusif *dbusif = tonegend->dbus_ctx;
     DBusMessage   *msg;
     va_list        ap;
-    int            success;
-    
-    do { /* not a loop */
-        success = FALSE;
+    dbus_bool_t    success = FALSE;
 
-        if (name == NULL) {
-            LOG_ERROR("%s(): Called with invalid argument", __FUNCTION__);
-            errno   = EINVAL;
-            break;
-        }
+    if (name == NULL) {
+        N_ERROR(LOG_CAT "%s(): Called with invalid argument", __FUNCTION__);
+        errno   = EINVAL;
+        return -1;
+    }
 
-        if (intf == NULL)
-            intf = service;
+    if (intf == NULL)
+        intf = TELEPHONY_TONES_SERVICE;
 
-        if ((msg = dbus_message_new_signal(path, intf, name)) == NULL) {
-            errno = ENOMEM;
-            break;
-        }
+    if ((msg = dbus_message_new_signal(TELEPHONY_TONES_PATH, intf, name)) == NULL) {
+        errno = ENOMEM;
+        return -1;
+    }
 
-        va_start(ap, first_arg_type);
+    va_start(ap, first_arg_type);
 
-        if (dbus_message_append_args_valist(msg, first_arg_type, ap)) {
-            success = dbus_connection_send(dbusif->conn, msg, NULL);
-        }
+    if (dbus_message_append_args_valist(msg, first_arg_type, ap)) {
+        success = dbus_connection_send(dbusif->conn, msg, NULL);
+    }
 
-        va_end(ap);
+    va_end(ap);
 
-        dbus_message_unref(msg);
-
-    } while(FALSE);
+    dbus_message_unref(msg);
 
     return success ? 0 : -1;
 }
@@ -240,12 +253,10 @@ static DBusHandlerResult handle_message(DBusConnection *conn,
         sig  = dbus_message_get_signature(msg);
         ser  = dbus_message_get_serial(msg);
 
-#if 0
         TRACE("%s(): message no #%u received: '%s', '%s', '%s'",
               __FUNCTION__, ser, intf, memb, sig);
-#endif
-        
-        key = create_key((gchar *)memb, (gchar *)sig, (gchar *)intf);
+
+        key = create_key((const gchar *)memb, (const gchar *)sig, (const gchar *)intf);
         method = g_hash_table_lookup(dbusif->hash, key);
         g_free(key);
 
@@ -269,11 +280,9 @@ static DBusHandlerResult handle_message(DBusConnection *conn,
         dbus_message_set_reply_serial(msg, ser);
         
         if (!dbus_connection_send(dbusif->conn, reply, NULL))
-            LOG_ERROR("%s(): D-Bus message reply failure", __FUNCTION__);
-#if 0
+            N_ERROR(LOG_CAT "%s(): D-Bus message reply failure", __FUNCTION__);
         else
             TRACE("%s(): message no #%u replied", __FUNCTION__, ser);
-#endif
 
         dbus_message_unref(reply);
     }
@@ -281,7 +290,7 @@ static DBusHandlerResult handle_message(DBusConnection *conn,
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
-static gchar *create_key(gchar *memb, gchar *sign, gchar *intf)
+static gchar *create_key(const gchar *memb, const gchar *sign, const gchar *intf)
 {
     gchar *key = NULL;
 
@@ -289,7 +298,7 @@ static gchar *create_key(gchar *memb, gchar *sign, gchar *intf)
     if (sign == NULL) sign = "";
     if (intf == NULL) intf = "";
 
-    key = g_strconcat(memb, "__", sign, "__", intf, NULL);
+    key = g_strjoin("__", memb, sign, intf, NULL);
 
     return key;
 }
@@ -299,13 +308,3 @@ static void destroy_key(gpointer key)
 {
     g_free(key);
 }
-
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */
-
-

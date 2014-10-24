@@ -1,7 +1,7 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd
 
-Copyright (C) 2010 Nokia Corporation.
+Copyright (C) 2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -19,35 +19,32 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
 USA.
 *************************************************************************/
 
-#ifndef __TONEGEND_INTERACT_H__
-#define __TONEGEND_INTERACT_H__
+#ifndef __TONEGEND_NGFIF_H__
+#define __TONEGEND_NGFIF_H__
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
-#include <stdint.h>
 #include <glib.h>
+
+#include <ngf/request.h>
 
 struct tonegend;
 
-struct interact {
+struct ngfif {
     struct tonegend *tonegend;
-    GIOChannel      *chan;
-    guint            evsrc;
+    GHashTable *hash;
 };
 
+typedef int (*event_handler_method)(NRequest *request, struct tonegend *tonegend);
 
-int interact_init(int, char **);
-void interact_destroy(struct interact *);
-struct interact *interact_create(struct tonegend *, int);
+struct ngfif *ngfif_create(struct tonegend *t);
+void ngfif_destroy(struct ngfif *t);
+int ngfif_register_input_method(struct tonegend *t, const char *name,
+                                 event_handler_method method_start_cb,
+                                 event_handler_method method_stop_cb);
+
+int ngfif_can_handle_request(struct tonegend *t, NRequest *request);
+int ngfif_handle_start_request(struct tonegend *t, NRequest *request);
+int ngfif_handle_stop_request(struct tonegend *t, NRequest *request);
 
 
-#endif /* __TONEGEND_INTERACT_H__ */
 
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */
+#endif /* __TONEGEND_NGFIF_H__ */

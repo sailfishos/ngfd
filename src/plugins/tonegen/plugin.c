@@ -1,8 +1,11 @@
 /*
- * ngfd - Non-graphic feedback daemon
+ * ngfd - Non-graphic feedback daemon, tonegen plugin
  *
  * Copyright (C) 2010 Nokia Corporation.
- * Contact: Xun Chen <xun.chen@nokia.com>
+ *               2015 Jolla Ltd.
+ *
+ * Contact: Juho Hämäläinen <juho.hamalainen@tieto.com>
+ *          Xun Chen <xun.chen@nokia.com>
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -22,75 +25,186 @@
 #include <ngf/plugin.h>
 #include <dbus/dbus.h>
 #include <dbus/dbus-glib-lowlevel.h>
+#include <stdbool.h>
+#include <glib.h>
+#include <limits.h>
+#include <string.h>
+
+#include "tonegend.h"
+#include "dbusif.h"
+#include "ausrv.h"
+#include "stream.h"
+#include "tone.h"
+#include "envelop.h"
+#include "indicator.h"
+#include "dtmf.h"
+#include "rfc4733.h"
+#include "ngfif.h"
 
 #define LOG_CAT        "tonegen: "
-#define TONEGEN_NAME   "com.Nokia.Telephony.Tones"
-#define TONEGEN_PATH   "/com/Nokia/Telephony/Tones"
-#define TONEGEN_IFACE  "com.Nokia.Telephony.Tones"
-#define TONEGEN_START  "StartEventTone"
-#define TONEGEN_STOP   "StopTone"
 
 N_PLUGIN_NAME        ("tonegen")
-N_PLUGIN_VERSION     ("0.1")
-N_PLUGIN_DESCRIPTION ("Tone generator plugin for knocking sound")
+N_PLUGIN_VERSION     ("0.2")
+N_PLUGIN_DESCRIPTION ("Tone generator plugin")
 
-static DBusConnection *system_bus = NULL;
+struct properties {
+    indicator_standard  standard;
+    int                 sample_rate;
+    bool                statistics;
+    int                 buflen;
+    int                 minreq;
+    char               *dtmf_tags;
+    char               *ind_tags;
+    int                 dtmf_volume;
+    int                 ind_volume;
+    bool                legacy_api;
+};
 
-static gboolean
-call_dbus_method (DBusConnection *bus, DBusMessage *msg)
+struct userdata {
+    NPlugin *plugin;
+    struct properties properties;
+    struct tonegend tonegend;
+};
+
+struct options_parse;
+typedef bool (*prop_value_parser)(const NValue *val, struct options_parse *opt);
+
+struct options_parse {
+    const char *arg_name;
+    prop_value_parser arg_parser;
+    void *arg_value;
+    char **arg_str;
+};
+
+static struct userdata u;
+
+static bool prop_8khz_parser(const NValue *val, struct options_parse *opt);
+static bool prop_standard_parser(const NValue *val, struct options_parse *opt);
+static bool prop_string_parser(const NValue *val, struct options_parse *opt);
+static bool prop_int_parser(const NValue *val, struct options_parse *opt);
+static bool prop_bool_parser(const NValue *val, struct options_parse *opt);
+
+static struct options_parse options[] = {
+    { "8kHz"            , prop_8khz_parser      , &u.properties.sample_rate, NULL },
+    { "standard"        , prop_standard_parser  , &u.properties.standard, NULL    },
+    { "buflen"          , prop_int_parser       , &u.properties.buflen, NULL      },
+    { "minreq"          , prop_int_parser       , &u.properties.minreq, NULL      },
+    { "statistics"      , prop_bool_parser      , &u.properties.statistics, NULL  },
+    { "tag-dtmf"        , prop_string_parser    , NULL, &u.properties.dtmf_tags   },
+    { "tag-indicator"   , prop_string_parser    , NULL, &u.properties.ind_tags    },
+    { "volume-dtmf"     , prop_int_parser       , &u.properties.dtmf_volume, NULL },
+    { "volume-indicator", prop_int_parser       , &u.properties.ind_volume, NULL  },
+    { "legacy-dbus-api" , prop_bool_parser      , &u.properties.legacy_api, NULL  },
+    { NULL              , NULL                  , NULL, NULL                      }
+};
+
+/* OPTION PARSING */
+
+static bool
+prop_8khz_parser (const NValue *val, struct options_parse *opt)
 {
-    if (!dbus_connection_send (bus, msg, 0)) {
-        N_WARNING (LOG_CAT "failed to send DBus message %s",
-            dbus_message_get_member (msg), dbus_message_get_interface (msg));
+    struct options_parse b;
+    bool use_8khz;
 
-        return FALSE;
-    }
+    b.arg_value = (void *) &use_8khz;
 
-    return TRUE;
+    if (prop_bool_parser (val, &b)) {
+        if (*(bool *) opt->arg_value)
+            *(int *) opt->arg_value = 8000;
+        return true;
+    } else
+        return false;
 }
 
-static gboolean
-tone_generator_toggle (DBusConnection *bus, guint pattern, gint volume,
-                       gboolean activate)
+static bool
+prop_bool_parser (const NValue *val, struct options_parse *opt)
 {
-    DBusMessage   *msg    = NULL;
-    gboolean       ret    = FALSE;
-    dbus_uint32_t  length = 0;
-    const char    *cmd    = activate ? TONEGEN_START : TONEGEN_STOP;
+    const char *str;
 
-    if (bus == NULL)
-        return FALSE;
+    str = n_value_get_string (val);
+    if (g_ascii_strncasecmp (str ?: "", "true", 4) == 0 ||
+        g_strcmp0 (str, "1") == 0)
+        *(bool *) opt->arg_value = true;
+    else if (g_ascii_strncasecmp (str ?: "", "false", 5) == 0 ||
+             g_strcmp0 (str, "0") == 0)
+        *(bool *) opt->arg_value = false;
+    else {
+        N_ERROR (LOG_CAT "Invalid value for boolean (%s)", str);
+        return false;
+    }
 
-    msg = dbus_message_new_method_call (TONEGEN_NAME,
-                                        TONEGEN_PATH,
-                                        TONEGEN_IFACE,
-                                        cmd);
+    return true;
+}
 
-    if (msg == NULL)
-        return FALSE;
+static bool
+prop_standard_parser (const NValue *val, struct options_parse *opt)
+{
+    const gchar *std;
 
-    if (activate) {
-        N_DEBUG (LOG_CAT "activating LED pattern %u with volume %d",
-            pattern, volume);
+    std = n_value_get_string(val);
+    if (g_ascii_strncasecmp (std ?: "", "cept", 4) == 0)
+        *(indicator_standard *) opt->arg_value = STD_CEPT;
+    else if (g_ascii_strncasecmp (std ?: "", "ansi", 4) == 0)
+        *(indicator_standard *) opt->arg_value = STD_ANSI;
+    else if (g_ascii_strncasecmp (std ?: "", "japan", 5) == 0)
+        *(indicator_standard *) opt->arg_value = STD_JAPAN;
+    else if (g_ascii_strncasecmp (std ?: "", "atnt", 4) == 0)
+        *(indicator_standard *) opt->arg_value = STD_ATNT;
+    else {
+        N_ERROR (LOG_CAT "Invalid standard '%s'", std);
+        return false;
+    }
 
-        ret = dbus_message_append_args (msg,
-            DBUS_TYPE_UINT32, &pattern,
-            DBUS_TYPE_INT32, &volume,
-            DBUS_TYPE_UINT32, &length,
-            DBUS_TYPE_INVALID);
+    return true;
+}
 
-        if (!ret) {
-            dbus_message_unref (msg);
-            return FALSE;
+static bool
+prop_string_parser (const NValue *val, struct options_parse *opt)
+{
+    *opt->arg_str = n_value_dup_string (val);
+
+    return true;
+}
+
+static bool
+prop_int_parser (const NValue *val, struct options_parse *opt)
+{
+    const char *str = n_value_get_string (val);
+    char *endptr;
+    long int value;
+
+    if (!str || strlen(str) == 0)
+        return false;
+
+    value = strtol (str, &endptr, 10);
+
+    if (value > INT_MAX || value < INT_MIN)
+        return false;
+
+    *(int *) opt->arg_value = (int) value;
+
+    return *endptr == '\0';
+}
+
+static void
+parse_opt (const char *key, const NValue *value, gpointer userdata)
+{
+    int i;
+
+    (void) userdata;
+
+    for (i = 0; options[i].arg_name; i++) {
+        if (g_strcmp0 (options[i].arg_name, key) == 0) {
+            if (!options[i].arg_parser (value, &options[i]))
+                N_ERROR (LOG_CAT "Failed to parse plugin property with key '%s'", key);
         }
     }
-    else {
-        N_DEBUG (LOG_CAT "deactivating LED pattern");
-    }
+}
 
-    ret = call_dbus_method (bus, msg);
-    dbus_message_unref (msg);
-    return ret;
+static void
+parse_options (NProplist *params)
+{
+    n_proplist_foreach (params, parse_opt, NULL);
 }
 
 static int
@@ -98,17 +212,72 @@ tonegen_sink_initialize (NSinkInterface *iface)
 {
     (void) iface;
 
-    DBusError error;
+    /* Set default properties */
+    u.properties.standard = STD_CEPT;
+    u.properties.sample_rate = 48000;
+    u.properties.statistics = false;
+    u.properties.buflen = 0;
+    u.properties.minreq = 0;
+    u.properties.dtmf_tags = NULL;
+    u.properties.ind_tags = NULL;
+    u.properties.dtmf_volume = 100;
+    u.properties.ind_volume = 100;
+    u.properties.legacy_api = false;
 
-    dbus_error_init (&error);
-    system_bus = dbus_bus_get (DBUS_BUS_SYSTEM, &error);
-    if (!system_bus) {
-        N_WARNING (LOG_CAT "failed to get system bus: %s", error.message);
-        dbus_error_free (&error);
+    NProplist *params = (NProplist*) n_plugin_get_params (u.plugin);
+    N_DEBUG (LOG_CAT "starting sink");
+    parse_options (params);
+
+    ausrv_init ();
+    stream_init ();
+    tone_init ();
+    envelop_init ();
+    indicator_init ();
+    dtmf_init ();
+    rfc4733_init ();
+
+    stream_set_default_samplerate (u.properties.sample_rate);
+    stream_print_statistics (u.properties.statistics);
+    stream_buffering_parameters (u.properties.buflen, u.properties.minreq);
+
+    dtmf_set_properties (u.properties.dtmf_tags);
+    indicator_set_properties (u.properties.ind_tags);
+
+    dtmf_set_volume (u.properties.dtmf_volume);
+    indicator_set_volume (u.properties.ind_volume);
+
+    u.tonegend.ngfd_ctx = ngfif_create (&u.tonegend);
+
+    if (u.properties.legacy_api) {
+        if ((u.tonegend.dbus_ctx = dbusif_create_full (&u.tonegend)) == NULL) {
+            N_ERROR (LOG_CAT "D-Bus setup failed");
+            return FALSE;
+        }
+    } else {
+        if ((u.tonegend.dbus_ctx = dbusif_create (&u.tonegend)) == NULL) {
+            N_ERROR (LOG_CAT "D-Bus setup failed");
+            return FALSE;
+        }
+    }
+
+    if ((u.tonegend.ausrv_ctx = ausrv_create (&u.tonegend, NULL)) == NULL) {
+        N_ERROR (LOG_CAT "PulseAudio setup failed.");
         return FALSE;
     }
 
-    dbus_connection_setup_with_g_main (system_bus, NULL);
+    if (rfc4733_create_ngfd (&u.tonegend) < 0) {
+        N_ERROR (LOG_CAT "Can't setup rfc4733 interface on NGFD");
+        return FALSE;
+    }
+
+    if (u.properties.legacy_api) {
+        if (rfc4733_create (&u.tonegend) < 0) {
+            N_ERROR (LOG_CAT "Can't setup rfc4733 interface on D-Bus");
+            return FALSE;
+        }
+    }
+
+    indicator_set_standard (u.properties.standard);
 
     return TRUE;
 }
@@ -117,11 +286,6 @@ static void
 tonegen_sink_shutdown (NSinkInterface *iface)
 {
     (void) iface;
-
-    if (system_bus) {
-        dbus_connection_unref (system_bus);
-        system_bus = NULL;
-    }
 }
 
 static int
@@ -129,12 +293,7 @@ tonegen_sink_can_handle (NSinkInterface *iface, NRequest *request)
 {
     (void) iface;
 
-    NProplist *props = (NProplist*) n_request_get_properties (request);
-
-    if (n_proplist_has_key (props, "tonegen.pattern"))
-        return TRUE;
-
-    return FALSE;
+    return ngfif_can_handle_request (&u.tonegend, request);
 }
 
 static int
@@ -149,25 +308,7 @@ tonegen_sink_play (NSinkInterface *iface, NRequest *request)
 {
     (void) iface;
 
-    NProplist *props   = (NProplist*) n_request_get_properties (request);
-    guint      pattern = 0;
-    gint       volume  = 0;
-
-    pattern = (guint) n_proplist_get_int (props, "tonegen.pattern");
-    volume  = n_proplist_get_int  (props, "tonegen.volume");
-
-    tone_generator_toggle (system_bus, pattern, volume, TRUE);
-
-    return TRUE;
-}
-
-static int
-tonegen_sink_pause (NSinkInterface *iface, NRequest *request)
-{
-    (void) iface;
-    (void) request;
-
-    return TRUE;
+    return ngfif_handle_start_request(&u.tonegend, request);
 }
 
 static void
@@ -176,7 +317,7 @@ tonegen_sink_stop (NSinkInterface *iface, NRequest *request)
     (void) iface;
     (void) request;
 
-    tone_generator_toggle (system_bus, 0, 0, FALSE);
+    ngfif_handle_stop_request (&u.tonegend, request);
 }
 
 N_PLUGIN_LOAD (plugin)
@@ -188,10 +329,11 @@ N_PLUGIN_LOAD (plugin)
         .can_handle = tonegen_sink_can_handle,
         .prepare    = tonegen_sink_prepare,
         .play       = tonegen_sink_play,
-        .pause      = tonegen_sink_pause,
+        .pause      = NULL,
         .stop       = tonegen_sink_stop
     };
 
+    u.plugin = plugin;
     n_plugin_register_sink (plugin, &decl);
 
     return TRUE;
@@ -200,4 +342,9 @@ N_PLUGIN_LOAD (plugin)
 N_PLUGIN_UNLOAD (plugin)
 {
     (void) plugin;
+
+    ausrv_destroy (u.tonegend.ausrv_ctx);
+    ngfif_destroy (u.tonegend.ngfd_ctx);
+    dbusif_destroy (u.tonegend.dbus_ctx);
+    rfc4733_destroy ();
 }

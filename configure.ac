@@ -46,6 +46,11 @@ PKG_CHECK_MODULES(GMODULE, gmodule-2.0)
 AC_SUBST(GMODULE_CFLAGS)
 AC_SUBST(GMODULE_LIBS)
 
+# Checks for PulseAudio.
+PKG_CHECK_MODULES(PULSE, libpulse libpulse-mainloop-glib)
+AC_SUBST(PULSE_CFLAGS)
+AC_SUBST(PULSE_LIBS)
+
 # Checks for check unit test framework.
 PKG_CHECK_MODULES(CHECK, check)
 AC_SUBST(CHECK_LIBS)

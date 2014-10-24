@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -19,15 +20,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
 USA.
 *************************************************************************/
 
-#define _GNU_SOURCE
-
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 
 #include <glib.h>
 
-#include <log/log.h>
+#include <ngf/log.h>
 #include <trace/trace.h>
 
 #include "ausrv.h"
@@ -37,14 +36,7 @@ USA.
 #include "dtmf.h"
 #include "dbusif.h"
 
-#define LOG_ERROR(f, args...) log_error(logctx, f, ##args)
-#define LOG_INFO(f, args...) log_error(logctx, f, ##args)
-#define LOG_WARNING(f, args...) log_error(logctx, f, ##args)
-
-#define TRACE(f, args...) trace_write(trctx, trflags, trkeys, f, ##args)
-
-#define MUTE_ON  1
-#define MUTE_OFF 0
+#define LOG_CAT "tonegen-dtmf: "
 
 struct dtmf {
     char           symbol;
@@ -75,39 +67,37 @@ static struct dtmf dtmf_defs[DTMF_MAX] = {
 static char   *dtmf_stream = STREAM_DTMF;
 static void   *dtmf_props  = NULL;
 static int     vol_scale   = 100;
-static int     mute        = MUTE_OFF;
+static bool    mute        = false;
 static guint   tmute_id;
 
 
 static void destroy_callback(void *);
 static void set_mute_timeout(struct ausrv *, guint);
 static gboolean mute_timeout_callback(gpointer);
-static void request_muting(struct ausrv *, dbus_bool_t);
+static void request_muting(struct ausrv *ausrv, bool new_mute);
 
 
 
-int dtmf_init(int argc, char **argv)
+int dtmf_init(void)
 {
-    (void)argc;
-    (void)argv;
-
     return 0;
 }
 
-void dtmf_play(struct ausrv *ausrv, uint type, uint32_t vol, int dur)
+void dtmf_play(struct ausrv *ausrv, dtmf_tone tone, uint32_t volume, int duration, const char *extra_properties)
 {
     struct stream *stream = stream_find(ausrv, dtmf_stream);
-    struct dtmf   *dtmf   = dtmf_defs + type;
-    uint32_t       per    = dur;
-    uint32_t       play   = dur > 60000 ? dur - 20000 : dur;
+    struct dtmf   *dtmf   = dtmf_defs + tone;
+    uint32_t       per    = duration;
+    uint32_t       play   = duration > 60000 ? duration - 20000 : duration;
     int            type_l = TONE_DTMF_L;
     int            type_h = TONE_DTMF_H;
     uint32_t       timeout;
+    void          *properties = dtmf_props;
         
-    if (type >= DTMF_MAX || (dur != 0 && dur < 10000))
+    if (tone >= DTMF_MAX || (duration != 0 && duration < 10000))
         return;
 
-    if (!dur) {
+    if (!duration) {
         /*
          * These types will make the DTMF tone as 'indicator'
          * i.e. the indicator_stop() will work on them
@@ -119,34 +109,40 @@ void dtmf_play(struct ausrv *ausrv, uint type, uint32_t vol, int dur)
     }
 
     if (stream != NULL) {
-        if (!dur) {
-            indicator_stop(ausrv, KILL_STREAM);
+        if (!duration) {
+            indicator_stop(ausrv, true);
             dtmf_stop(ausrv);
         }
     }
     else {
+        if (extra_properties)
+            properties = stream_merge_properties(dtmf_props, extra_properties);
+
         stream = stream_create(ausrv, dtmf_stream, NULL, 0,
                                tone_write_callback,
                                destroy_callback,
-                               dtmf_props,
+                               properties,
                                NULL);
 
+        if (extra_properties)
+            stream_free_properties(properties);
+
         if (stream == NULL) {
-            LOG_ERROR("%s(): Can't create stream", __FUNCTION__);
+            N_ERROR(LOG_CAT "%s(): Can't create stream", __FUNCTION__);
             return;
         }
     }
 
-    vol = (vol_scale * vol) / 100;
+    volume = (vol_scale * volume) / 100;
 
-    tone_create(stream, type_l, dtmf->low_freq , vol/2, per,play, 0,dur);
-    tone_create(stream, type_h, dtmf->high_freq, vol/2, per,play, 0,dur);
+    tone_create(stream, type_l, dtmf->low_freq , volume/2, per, play, 0, duration);
+    tone_create(stream, type_h, dtmf->high_freq, volume/2, per, play, 0, duration);
 
-    timeout = dur ? dur + (30 * 1000000) : (1 * 60 * 1000000);
+    timeout = duration ? duration + (30 * 1000000) : (1 * 60 * 1000000);
 
     stream_set_timeout(stream, timeout);
 
-    request_muting(ausrv, MUTE_ON);
+    request_muting(ausrv, true);
     set_mute_timeout(ausrv, 0);
 }
 
@@ -168,12 +164,12 @@ void dtmf_stop(struct ausrv *ausrv)
             case TONE_DTMF_IND_L:
             case TONE_DTMF_IND_H:
                 /* in the future a linear ramp-down enevlop can be set */
-                tone_destroy(tone, KILL_CHAIN);
+                tone_destroy(tone, true);
                 break;
 
             default:
                 if (!tone_chainable(tone->type))
-                    tone_destroy(tone, KILL_CHAIN);
+                    tone_destroy(tone, true);
                 break;
             }
         }
@@ -210,9 +206,9 @@ static void destroy_callback(void *data)
         stream = tone->stream;
         ausrv  = stream->ausrv;
 
-        request_muting(ausrv, MUTE_OFF);
+        request_muting(ausrv, false);
 
-        mute = MUTE_OFF;
+        mute = false;
     }
 
     tone_destroy_callback(data);
@@ -241,38 +237,28 @@ static gboolean mute_timeout_callback(gpointer data)
 
     TRACE("mute timeout fired");
 
-    request_muting(ausrv, MUTE_OFF);
+    request_muting(ausrv, false);
 
     tmute_id = 0;
 
     return FALSE;
 }
 
-static void request_muting(struct ausrv *ausrv, dbus_bool_t new_mute)
+static void request_muting(struct ausrv *ausrv, bool new_mute)
 {
-    int sts;
-
-    new_mute = new_mute ? MUTE_ON : MUTE_OFF;
+    int             sts;
+    dbus_bool_t     set_mute = new_mute ? TRUE : FALSE;
 
     if (ausrv != NULL && mute != new_mute) {
         sts = dbusif_send_signal(ausrv->tonegend, NULL, "Mute",
-                                 DBUS_TYPE_BOOLEAN, &new_mute,
+                                 DBUS_TYPE_BOOLEAN, &set_mute,
                                  DBUS_TYPE_INVALID);
 
         if (sts != 0)
-            LOG_ERROR("failed to send mute signal");
+            N_ERROR(LOG_CAT "failed to send mute signal");
         else {
             TRACE("sent signal to turn mute %s", new_mute ? "on" : "off");
             mute = new_mute;
         }
     }
 }
-
-
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

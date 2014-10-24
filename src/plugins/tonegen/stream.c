@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -19,27 +20,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
 USA.
 *************************************************************************/
 
-#define _GNU_SOURCE
-
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <stdbool.h>
 
 #include <pulse/pulseaudio.h>
 
-#include <log/log.h>
+#include <ngf/log.h>
 #include <trace/trace.h>
 
 #include "ausrv.h"
 #include "stream.h"
 
-#define LOG_ERROR(f, args...) log_error(logctx, f, ##args)
-#define LOG_INFO(f, args...) log_error(logctx, f, ##args)
-#define LOG_WARNING(f, args...) log_error(logctx, f, ##args)
-
-#define TRACE(f, args...) trace_write(trctx, trflags, trkeys, f, ##args)
+#define LOG_CAT "tonegen-stream: "
 
 static void state_callback(pa_stream *, void *);
 static void underflow_callback(pa_stream *, void *);
@@ -50,15 +46,12 @@ static void drain_callback(pa_stream *, int, void *);
 static void write_samples(struct stream *, int16_t *,size_t, uint32_t *);
 
 static uint32_t default_rate     = 48000;
-static int      print_statistics = 0;
+static bool     print_statistics = false;
 static int      target_buflen    = 1000; /* 1000msec ie. 1sec */
 static int      min_bufreq       = 200;  /* 200msec */
 
-int stream_init(int argc, char **argv)
+int stream_init(void)
 {
-    (void)argc;
-    (void)argv;
-
     return 0;
 }
 
@@ -68,7 +61,7 @@ void stream_set_default_samplerate(uint32_t rate)
     default_rate = rate;
 }
 
-void stream_print_statistics(int print)
+void stream_print_statistics(bool print)
 {
     print_statistics = print;
 }
@@ -81,7 +74,7 @@ void stream_buffering_parameters(int tlen, int minreq)
     }
     else {
         if (tlen < 20 || minreq < 10 || minreq > tlen - 10) {
-            LOG_ERROR("Ignoring invalid buffering parameters %d %d",
+            N_ERROR(LOG_CAT "Ignoring invalid buffering parameters %d %d",
                       tlen, minreq);
         }
         else {
@@ -92,10 +85,10 @@ void stream_buffering_parameters(int tlen, int minreq)
 }
 
 struct stream *stream_create(struct ausrv *ausrv,
-                             char         *name,
-                             char         *sink,
+                             const char   *name,
+                             const char   *sink,
                              uint32_t      sample_rate,
-                             uint32_t    (*write)(struct stream*,int16_t*,int),
+                             uint32_t    (*write)(struct stream *s, int16_t *samples, int length),
                              void        (*destroy)(void*),
                              void         *proplist,
                              void         *data)
@@ -113,7 +106,7 @@ struct stream *stream_create(struct ausrv *ausrv,
     char                bfstr[32];
 
     if (!ausrv->connected) {
-        LOG_ERROR("Can't create stream '%s': no server connected", name);
+        N_ERROR(LOG_CAT "Can't create stream '%s': no server connected", name);
         return NULL;
     }
 
@@ -142,11 +135,10 @@ struct stream *stream_create(struct ausrv *ausrv,
     gettimeofday(&tv, NULL);
     start = (uint64_t)tv.tv_sec * (uint64_t)1000000 + (uint64_t)tv.tv_usec;
 
-    if ((stream = (struct stream *)malloc(sizeof(*stream))) == NULL) {
-        LOG_ERROR("%s(): Can't allocate memory", __FUNCTION__);
+    if ((stream = (struct stream *) calloc(1, sizeof(struct stream))) == NULL) {
+        N_ERROR(LOG_CAT "%s(): Can't allocate memory", __FUNCTION__);
         return NULL;
     }
-    memset(stream, 0, sizeof(*stream));
 
     stream->next    = ausrv->streams;
     stream->ausrv   = ausrv;
@@ -157,7 +149,7 @@ struct stream *stream_create(struct ausrv *ausrv,
                                                   &spec, NULL,
                                                   (pa_proplist *)proplist);
     stream->start   = start;
-    stream->flush   = TRUE;
+    stream->flush   = true;
     stream->bufsize = bufsize;
     stream->write   = write;
     stream->destroy = destroy;
@@ -231,6 +223,7 @@ void stream_destroy(struct stream *stream)
     const pa_buffer_attr *battr;
     struct stream_stat   *stat;
     pa_operation         *oper;
+#ifdef ENABLE_TRACE
     struct timeval        tv;
     uint64_t              stop;
     double                upt;
@@ -242,6 +235,7 @@ void stream_destroy(struct stream *stream)
     uint32_t              avcalc;
     uint32_t              avcpu;
     uint32_t              avgap;
+#endif
 
     TRACE("%s(): destroying stream '%s'", __FUNCTION__, stream->name);
 
@@ -251,8 +245,10 @@ void stream_destroy(struct stream *stream)
         return;
     }
 
+#ifdef ENABLE_TRACE
     gettimeofday(&tv, NULL);
     stop = (uint64_t)tv.tv_sec * (uint64_t)1000000 + (uint64_t)tv.tv_usec;
+#endif
 
 
     for (prev=(struct stream *)&ausrv->streams;  prev->next;  prev=prev->next){
@@ -273,7 +269,7 @@ void stream_destroy(struct stream *stream)
 
             prev->next = stream->next;
             stream->next   = NULL;
-            stream->killed = TRUE;
+            stream->killed = true;
 
             if (stream->destroy != NULL)
                 stream->destroy(stream->data);
@@ -295,6 +291,7 @@ void stream_destroy(struct stream *stream)
                           battr->prebuf, battr->minreq);
                 }
 
+#ifdef ENABLE_TRACE
                 upt  = (double)(stop - stream->start) / 1000000.0;
                 strt = (double)(stream->time) / 1000000.0;
                 dur  = (double)(stat->wrtime - stat->firstwr)/1000000.0 + 0.01;
@@ -324,13 +321,14 @@ void stream_destroy(struct stream *stream)
                       stat->mingap / 1000, avgap, stat->maxgap / 1000,
                       stat->underflows, stat->late, stat->wrcnt,
                       (stat->late * 100) / stat->wrcnt);
+#endif
             }
 
             return;
         }
     }
 
-    LOG_ERROR("%s(): Can't find stream '%s'", __FUNCTION__, stream->name);
+    N_ERROR(LOG_CAT "%s(): Can't find stream '%s'", __FUNCTION__, stream->name);
 }
 
 void stream_set_timeout(struct stream *stream, uint32_t timeout)
@@ -349,7 +347,7 @@ void stream_kill_all(struct ausrv *ausrv)
         ausrv->streams = stream->next;
 
         stream->next   = NULL;
-        stream->killed = TRUE;
+        stream->killed = true;
 
         if (stream->destroy != NULL)
             stream->destroy(stream->data);
@@ -374,7 +372,7 @@ void stream_clean_buffer(struct stream *stream)
     uint32_t        dcnt;
     size_t          offs;
     size_t          len;
-    int             i,j;
+    uint32_t        i,j;
     int32_t         sample;
 
     gettimeofday(&tv, NULL);
@@ -398,7 +396,7 @@ void stream_clean_buffer(struct stream *stream)
             else {
                 for (i = 0, j = offs / 2;  i < dcnt;  i++, j++) {
                     sample = stream->buf.samples[j];
-                    sample = (sample * ((int32_t)dcnt - i-1)) / (int32_t)dcnt;
+                    sample = (sample * ((int32_t)dcnt - (int32_t)i - 1)) / (int32_t)dcnt;
 
                     if (sample > 32767)
                         stream->buf.samples[j] = 32767;
@@ -433,32 +431,26 @@ struct stream *stream_find(struct ausrv *ausrv, char *name)
     return stream;
 }
 
-
-void *stream_parse_properties(char *propstring)
+static pa_proplist *parse_properties(pa_proplist *proplist, const char *propstring)
 {
-    pa_proplist *proplist;
-    char        *key, *val, *next, keybuf[128];
+    const char  *key, *val, *next;
+    char         keybuf[128];
     int          keylen, vallen;
 
     if (propstring == NULL)
         return NULL;
 
-    if ((proplist = pa_proplist_new()) == NULL) {
-        LOG_ERROR("%s(): Failed to allocate property list", __FUNCTION__);
-        return NULL;
-    }
-
     key = propstring;
     while (key != NULL) {
         if ((val = strchr(key, '=')) == NULL) {
-            LOG_ERROR("%s(): Invalid property string '%s'", __FUNCTION__,
+            N_ERROR(LOG_CAT "%s(): Invalid property string '%s'", __FUNCTION__,
                       propstring);
             goto error;
         }
 
         keylen = val - key;
         if (keylen >= (int)sizeof(keybuf)) {
-            LOG_ERROR("%s(): property key '%*.*s' too long", __FUNCTION__,
+            N_ERROR(LOG_CAT "%s(): property key '%*.*s' too long", __FUNCTION__,
                       keylen, keylen, key);
             goto error;
         }
@@ -478,13 +470,36 @@ void *stream_parse_properties(char *propstring)
         key = next;
     }
 
-    return (void *)proplist;
+    return proplist;
     
  error:
     pa_proplist_free(proplist);
     return NULL;
 }
 
+void *stream_parse_properties(const char *propstring)
+{
+    pa_proplist *p;
+
+    if ((p = pa_proplist_new()) == NULL) {
+        N_ERROR(LOG_CAT "%s(): Failed to allocate property list", __FUNCTION__);
+        return NULL;
+    }
+
+    return (void *) parse_properties(p, propstring);
+}
+
+void *stream_merge_properties(void *proplist, const char *extra_properties)
+{
+    pa_proplist *p = (pa_proplist *) proplist;
+
+    if (!p)
+        return stream_parse_properties(extra_properties);
+    else
+        p = pa_proplist_copy(p);
+
+    return (void *) parse_properties(p, extra_properties);
+}
 
 void stream_free_properties(void *proplist)
 {
@@ -497,7 +512,7 @@ static void state_callback(pa_stream *pastr, void *userdata)
     struct stream *stream = (struct stream *)userdata;
 
     if (!stream || stream->pastr != pastr) {
-        LOG_ERROR("%s(): confused with data structures", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): confused with data structures", __FUNCTION__);
         return;
     }
 
@@ -522,7 +537,7 @@ static void state_callback(pa_stream *pastr, void *userdata)
 
         default:
         case PA_STREAM_FAILED:
-            LOG_ERROR("%s(): Stream error: %s", __FUNCTION__,
+            N_ERROR(LOG_CAT "%s(): Stream error: %s", __FUNCTION__,
                       pa_strerror(pa_context_errno(pa_stream_get_context(pastr))));
             break;
     }
@@ -536,9 +551,9 @@ static void underflow_callback(pa_stream *pastr, void *userdata)
     struct stream *stream = (struct stream *)userdata;
 
     if (!stream || !stream->name) 
-        LOG_ERROR("Stream underflow");
+        N_ERROR(LOG_CAT "Stream underflow");
     else {
-        LOG_ERROR("Stream '%s' underflow", stream->name);
+        N_ERROR(LOG_CAT "Stream '%s' underflow", stream->name);
 
         stream->stat.underflows++;
 
@@ -553,9 +568,9 @@ static void suspended_callback(pa_stream *pastr, void *userdata)
     struct stream *stream = (struct stream *)userdata;
 
     if (!stream || !stream->name) 
-        LOG_ERROR("Stream suspended");
+        N_ERROR(LOG_CAT "Stream suspended");
     else {
-        LOG_ERROR("Stream '%s' suspended", stream->name);
+        N_ERROR(LOG_CAT "Stream '%s' suspended", stream->name);
 
     }
 }
@@ -570,8 +585,8 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
     int16_t              *extra;
     size_t                extlen;
     struct timeval        tv;
-    uint32_t              start;
-    uint32_t              gap;
+    uint32_t              start = 0;
+    uint32_t              gap = 0;
     uint32_t              calcend;
     uint32_t              calc;
     uint32_t              period;
@@ -579,7 +594,7 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
 
 
     if (!stream || stream->pastr != pastr) {
-        LOG_ERROR("%s(): Confused with data structures", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): Confused with data structures", __FUNCTION__);
         return;
     }
 
@@ -592,7 +607,7 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
         gap   = start - stat->wrtime;
     }
 
-#if 0
+#ifdef ENABLE_VERBOSE_TRACE
     TRACE("%s(): %d bytes", __FUNCTION__, bytes);
 #endif
 
@@ -603,7 +618,7 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
         if (samples != NULL)
             write_samples(stream, samples,buflen, &cpu);
         else {
-            LOG_ERROR("%s(): failed to allocate memory", __FUNCTION__);
+            N_ERROR(LOG_CAT "%s(): failed to allocate memory", __FUNCTION__);
             return;
         }
     }
@@ -627,7 +642,7 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
                 cpu += stream->buf.cpu;
             }
             else {
-                LOG_ERROR("%s(): failed to allocate memory", __FUNCTION__);
+                N_ERROR(LOG_CAT "%s(): failed to allocate memory", __FUNCTION__);
                 return;
             }
         }
@@ -668,14 +683,14 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
                 if (calc < stat->mincalc) stat->mincalc = calc;
                 if (calc > stat->maxcalc) stat->maxcalc = calc;
 
-#if 0
+#ifdef ENABLE_VERBOSE_TRACE
                 TRACE("Buffer writting period %umsec", period);
 #endif
                 
                 if (period > (uint32_t)min_bufreq) {
                     stat->late++;
                     
-#if 0
+#ifdef ENABLE_VERBOSE_TRACE
                     TRACE("Buffer is late %umsec in stream '%s'",
                           period - min_bufreq, stream->name);
 #endif
@@ -688,7 +703,7 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
         stream->bcnt += buflen;
 
 
-#if 0
+#ifdef ENABLE_VERBOSE_TRACE
         TRACE("stream time %09umsec end %09umsec",
               stream->time / 1000, stream->end / 1000);
 #endif
@@ -706,7 +721,7 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
                 stream->buf.buflen  = stream->bufsize;
 
                 if (stream->buf.samples == NULL)
-                    LOG_ERROR("%s(): failed to allocate memory", __FUNCTION__);
+                    N_ERROR(LOG_CAT "%s(): failed to allocate memory", __FUNCTION__);
                 else {
                     write_samples(stream, stream->buf.samples,stream->bufsize,
                                   &stream->buf.cpu);
@@ -722,12 +737,12 @@ static void flush_callback(pa_stream *pastr, int success, void *userdata)
     struct stream *stream = (struct stream *)userdata;
 
     if (stream->pastr != pastr) {
-        LOG_ERROR("%s(): Confused with data structures", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): Confused with data structures", __FUNCTION__);
         return;
     }
 
     if (!success)
-        LOG_ERROR("%s(): Can't flush stream '%s'", __FUNCTION__, stream->name);
+        N_ERROR(LOG_CAT "%s(): Can't flush stream '%s'", __FUNCTION__, stream->name);
     else
         TRACE("%s(): stream '%s' flushed", __FUNCTION__, stream->name);
 
@@ -741,12 +756,12 @@ static void drain_callback(pa_stream *pastr, int success, void *userdata)
     struct stream *stream = (struct stream *)userdata;
 
     if (stream->pastr != pastr) {
-        LOG_ERROR("%s(): Confused with data structures", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): Confused with data structures", __FUNCTION__);
         return;
     }
 
     if (!success)
-        LOG_ERROR("%s(): Can't drain stream '%s'", __FUNCTION__, stream->name);
+        N_ERROR(LOG_CAT "%s(): Can't drain stream '%s'", __FUNCTION__, stream->name);
     else
         TRACE("%s(): stream '%s' drained", __FUNCTION__, stream->name);
 
@@ -774,11 +789,3 @@ static void write_samples(struct stream *stream, int16_t *samples,
 
     return;
 }
-
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

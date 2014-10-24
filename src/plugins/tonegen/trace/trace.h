@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -25,16 +26,9 @@ USA.
 #include <stdio.h>
 
 #ifdef ENABLE_TRACE
-#define trace_write(c, l, t, f, args...) printf(f "\n", ##args)
+#define TRACE(f, args...) printf("TRACE: " f "\n", ##args)
 #else
-#define trace_write(c, l, t, f, args...) do {} while(0)
+#define TRACE(f, args...) do {} while (0)
 #endif
 
 #endif /* __NOTIF_TRACE_H__ */
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

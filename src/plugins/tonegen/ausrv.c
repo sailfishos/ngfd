@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -19,13 +20,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
 USA.
 *************************************************************************/
 
-#define _GNU_SOURCE
-
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <stdbool.h>
 
-#include <log/log.h>
+#include <ngf/log.h>
 #include <trace/trace.h>
 
 #include "stream.h"
@@ -35,19 +35,12 @@ USA.
 #error Invalid PulseAudio API version
 #endif
 
-#define DISCONNECTED    0
-#define CONNECTED       1
-
 #define DEFAULT_SERVER  "default Pulse Audio"
 #define CONNECT_DELAY   10                              /* in seconds */
 
-#define LOG_ERROR(f, args...) log_error(logctx, f, ##args)
-#define LOG_INFO(f, args...) log_error(logctx, f, ##args)
-#define LOG_WARNING(f, args...) log_error(logctx, f, ##args)
+#define LOG_CAT "tonegen-ausrv: "
 
-#define TRACE(f, args...) trace_write(trctx, trflags, trkeys, f, ##args)
-
-static void set_connection_status(struct ausrv *, int);
+static void set_connection_status(struct ausrv *ausrv, bool connected);
 static void context_callback(pa_context *, void *);
 static void event_callback(pa_context *, pa_subscription_event_type_t,
                            uint32_t, void *);
@@ -55,52 +48,43 @@ static void connect_server(struct ausrv *);
 static void restart_timer(struct ausrv *, int);
 static void cancel_timer(struct ausrv *);
 
-static char *pa_client_name;
+static const char *pa_client_name = "ngf-tonegen-plugin";
 
 
-int ausrv_init(int argc, char **argv)
+int ausrv_init(void)
 {
-    (void)argc;
-
-    char *name = basename(argv[0]);
-
-    pa_client_name = name ? strdup(name) : "tonegend";
-
     return 0;
 }
 
 void ausrv_exit(void)
 {
-    free(pa_client_name);
-    pa_client_name = NULL;
 }
 
-struct ausrv *ausrv_create(struct tonegend *tonegend, char *server)
+struct ausrv *ausrv_create(struct tonegend *tonegend, const char *server)
 {
     pa_glib_mainloop   *mainloop = NULL;
     struct ausrv       *ausrv;
     pa_mainloop_api    *mainloop_api;
 
-    if ((ausrv = malloc(sizeof(*ausrv))) == NULL) {
-        LOG_ERROR("%s(): Can't allocate memory", __FUNCTION__);
+    if ((ausrv = calloc(1, sizeof(struct ausrv))) == NULL) {
+        N_ERROR(LOG_CAT "%s(): Can't allocate memory", __FUNCTION__);
         goto failed;
     }
 
     if ((mainloop = pa_glib_mainloop_new(NULL)) == NULL) {
-        LOG_ERROR("%s(): pa_glib_mainloop_new() failed", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): pa_glib_mainloop_new() failed", __FUNCTION__);
         goto failed;
     }
 
     mainloop_api = pa_glib_mainloop_get_api(mainloop);
 
     if (pa_signal_init(mainloop_api) < 0) {
-        LOG_ERROR("%s(): pa_signal_init() failed", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): pa_signal_init() failed", __FUNCTION__);
         goto failed;
     }
     
-    memset(ausrv, 0, sizeof(*ausrv));
     ausrv->tonegend = tonegend;
-    ausrv->server   = strdup(server ? server : DEFAULT_SERVER);
+    ausrv->server   = strdup(server ?: DEFAULT_SERVER);
     ausrv->mainloop = mainloop;
 
     connect_server(ausrv);
@@ -135,17 +119,11 @@ void ausrv_destroy(struct ausrv *ausrv)
 }
 
 
-static void set_connection_status(struct ausrv *ausrv, int sts)
+static void set_connection_status(struct ausrv *ausrv, bool connected)
 {
-    int connected = sts ? CONNECTED : DISCONNECTED;
-
-    if ((ausrv->connected ^ connected)) {
+    if (ausrv->connected != connected) {
         ausrv->connected = connected;
-
-        if (connected)
-            TRACE("Connected to '%s' server", ausrv->server);
-        else
-            TRACE("Disconnected from %s server", ausrv->server);
+        TRACE("%s '%s' server", ausrv->connected ? "Connected to" : "Disconnected from", ausrv->server);
     }
 }
 
@@ -156,12 +134,12 @@ static void context_callback(pa_context *context, void *userdata)
     const char   *strerr;
 
     if (context == NULL) {
-        LOG_ERROR("%s() called with zero context", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s() called with zero context", __FUNCTION__);
         return;
     }
 
     if (ausrv == NULL || ausrv->context != context) {
-        LOG_ERROR("%s(): Confused with data structures", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): Confused with data structures", __FUNCTION__);
         return;
     }
 
@@ -169,24 +147,24 @@ static void context_callback(pa_context *context, void *userdata)
 
     case PA_CONTEXT_CONNECTING:
         TRACE("ausrv: connecting to server");
-        set_connection_status(ausrv, DISCONNECTED);
+        set_connection_status(ausrv, false);
         break;
         
     case PA_CONTEXT_AUTHORIZING:
         TRACE("ausrv: authorizing");
-        set_connection_status(ausrv, DISCONNECTED);
+        set_connection_status(ausrv, false);
         break;
         
     case PA_CONTEXT_SETTING_NAME:
         TRACE("ausrv: setting name");
-        set_connection_status(ausrv, DISCONNECTED);
+        set_connection_status(ausrv, false);
         break;
         
     case PA_CONTEXT_READY:
         TRACE("ausrv: connection established.");
-        set_connection_status(ausrv, CONNECTED);
+        set_connection_status(ausrv, true);
         cancel_timer(ausrv);
-        LOG_INFO("Pulse Audio OK");        
+        N_DEBUG(LOG_CAT "PulseAudio OK");
         break;
         
     case PA_CONTEXT_TERMINATED:
@@ -199,11 +177,11 @@ static void context_callback(pa_context *context, void *userdata)
             if ((strerr = pa_strerror(err)) == NULL)
                 strerr = "<unknown>";
 
-            LOG_ERROR("ausrv: server connection failure: %s", strerr);
+            N_ERROR(LOG_CAT "ausrv: server connection failure: %s", strerr);
         }
 
     disconnect:
-        set_connection_status(ausrv, DISCONNECTED);
+        set_connection_status(ausrv, false);
         stream_kill_all(ausrv);
         restart_timer(ausrv, CONNECT_DELAY);
     }
@@ -219,7 +197,7 @@ static void event_callback(pa_context                   *context,
     (void)idx;
   
     if (ausrv == NULL || ausrv->context != context)
-        LOG_ERROR("%s(): Confused with data structures", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): Confused with data structures", __FUNCTION__);
     else {
         switch (type) {
 
@@ -256,7 +234,7 @@ static void retry_connect(pa_mainloop_api *api, pa_time_event *event,
     (void)tv;
     
     if (event != ausrv->timer) {
-        LOG_ERROR("%s(): Called with unknown timer (%p != %p)", __FUNCTION__,
+        N_ERROR(LOG_CAT "%s(): Called with unknown timer (%p != %p)", __FUNCTION__,
                   event, ausrv->timer);
         return;
     }
@@ -319,7 +297,7 @@ static void connect_server(struct ausrv *ausrv)
     }
     
     if ((ausrv->context = pa_context_new(api, pa_client_name)) == NULL) {
-        LOG_ERROR("%s(): pa_context_new() failed, exiting", __FUNCTION__);
+        N_ERROR(LOG_CAT "%s(): pa_context_new() failed, exiting", __FUNCTION__);
         exit(1);
     }
     
@@ -327,17 +305,6 @@ static void connect_server(struct ausrv *ausrv)
     pa_context_set_subscribe_callback(ausrv->context, event_callback, ausrv);
 
 
-    LOG_INFO("Trying to connect to %s...", server ? server : DEFAULT_SERVER);
+    N_DEBUG(LOG_CAT "Trying to connect to %s...", server ?: DEFAULT_SERVER);
     pa_context_connect(ausrv->context, server, PA_CONTEXT_NOAUTOSPAWN, NULL);
 }
-
-
-
-
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

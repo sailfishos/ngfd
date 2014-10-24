@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -21,10 +22,6 @@ USA.
 
 #ifndef __TONEGEND_ENVELOP_H__
 #define __TONEGEND_ENVELOP_H__
-
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
 
 #include <stdint.h>
 
@@ -50,18 +47,10 @@ union envelop {
 };
 
 
-int envelop_init(int, char **);
-union envelop *envelop_create(int, uint32_t, uint32_t, uint32_t);
-void envelop_update(union envelop *, uint32_t, uint32_t);
-void envelop_destroy(union envelop *);
-int32_t envelop_apply(union envelop *, int32_t, uint32_t);
+int envelop_init(void);
+union envelop *envelop_create(int type, uint32_t length, uint32_t start, uint32_t end);
+void envelop_update(union envelop *envelop, uint32_t length, uint32_t end);
+void envelop_destroy(union envelop *envelop);
+int32_t envelop_apply(union envelop *envelop, int32_t in, uint32_t t);
 
 #endif /* __TONEGEND_ENVELOP_H__ */
-
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -19,33 +20,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
 USA.
 *************************************************************************/
 
-#define _GNU_SOURCE
-
 #include <math.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <stdbool.h>
 
-#include <log/log.h>
+#include <ngf/log.h>
 #include <trace/trace.h>
 
 #include "stream.h"
 #include "envelop.h"
 #include "tone.h"
 
-#ifndef TRUE
-#define TRUE  1
-#endif
-#ifndef FALSE
-#define FALSE 0
-#endif
-
-#define LOG_ERROR(f, args...) log_error(logctx, f, ##args)
-#define LOG_INFO(f, args...) log_error(logctx, f, ##args)
-#define LOG_WARNING(f, args...) log_error(logctx, f, ##args)
-
-#define TRACE(f, args...) trace_write(trctx, trflags, trkeys, f, ##args)
+#define LOG_CAT "tonegen-tone: "
 
 #define AMPLITUDE SHRT_MAX /* 32767 */
 #define OFFSET    8192
@@ -56,9 +45,6 @@ static inline void singen_init(struct singen *singen, uint32_t freq,
 {
     double w = 2.0 * M_PI * ((double)freq / (double)rate);
 
-#if 0
-    if (volume < 0  ) volume = 0;
-#endif
     if (volume > 100) volume = 100;
 
     singen->m = 2.0 * cos(w) * (AMPLITUDE * OFFSET);
@@ -79,19 +65,16 @@ static inline int32_t singen_write(struct singen *singen)
     return (int32_t)(singen->n0 / singen->offs);
 }
 
-static void setup_envelop_for_tone(struct tone *, int, uint32_t, uint32_t);
+static void setup_envelop_for_tone(struct tone *tone, tone_type type, uint32_t play, uint32_t duration);
 
-int tone_init(int argc, char **argv)
+int tone_init(void)
 {
-    (void)argc;
-    (void)argv;
-
     return 0;
 }
 
 
 struct tone *tone_create(struct stream *stream,
-                         int            type,
+                         tone_type      type,
                          uint32_t       freq, 
                          uint32_t       volume,
                          uint32_t       period,
@@ -107,11 +90,10 @@ struct tone *tone_create(struct stream *stream,
     if (!volume || !period || !play)
         return NULL;
 
-    if ((tone = (struct tone *)malloc(sizeof(*tone))) == NULL) {
-        LOG_ERROR("%s(): Can't allocate memory", __FUNCTION__);
+    if ((tone = (struct tone *) calloc(1, sizeof(struct tone))) == NULL) {
+        N_ERROR(LOG_CAT "%s(): Can't allocate memory", __FUNCTION__);
         return NULL;
     }
-    memset(tone, 0, sizeof(*tone));
 
     if (tone_chainable(type) && duration > 0) {
         for (link = (struct tone *)stream->data;   link;   link = link->next) {
@@ -152,12 +134,12 @@ struct tone *tone_create(struct stream *stream,
         stream->data = (void *)tone;
 
     if (duration)
-        stream->flush = FALSE;
+        stream->flush = false;
 
     return tone;
 }
 
-void tone_destroy(struct tone *tone, int kill_chain)
+void tone_destroy(struct tone *tone, bool kill_chain)
 {
     struct stream  *stream = tone->stream;
     struct tone    *prev;
@@ -167,7 +149,7 @@ void tone_destroy(struct tone *tone, int kill_chain)
     for (prev = (struct tone *)&stream->data;    prev;    prev = prev->next) {
         if (prev->next == tone) {
 
-            TRACE("%s(%s_chain)", __FUNCTION__, kill_chain?"kill":"preserve");
+            TRACE("%s(%s_chain)", __FUNCTION__, kill_chain ? "kill" : "preserve");
 
             if ((link = tone->chain) == NULL)
                 prev->next = tone->next;
@@ -191,11 +173,11 @@ void tone_destroy(struct tone *tone, int kill_chain)
         }
     }
 
-    LOG_ERROR("%s(): Can't find the stream to be destoyed", __FUNCTION__);
+    N_ERROR(LOG_CAT "%s(): Can't find the stream to be destoyed", __FUNCTION__);
 }
 
 
-int tone_chainable(int type)
+bool tone_chainable(tone_type type)
 {
     switch (type) {
     case TONE_DTMF_L:
@@ -233,7 +215,7 @@ uint32_t tone_write_callback(struct stream *stream, int16_t *buf, int len)
                 next = tone->next;
 
                 if (tone->end && tone->end < t)
-                    tone_destroy(tone, PRESERVE_CHAIN);
+                    tone_destroy(tone, false);
                 else if (t > tone->start) {
                     abst = (uint32_t)((t - tone->start) / SCALE);
                     relt = abst % tone->period;
@@ -253,7 +235,7 @@ uint32_t tone_write_callback(struct stream *stream, int16_t *buf, int len)
             } /* for */
 
 
-#if 0
+#ifdef ENABLE_VERBOSE_TRACE
             if (sample < SHRT_MIN || sample > SHRT_MAX) {
                 TRACE("sample %d is out of range (%d - %d)",
                       sample, SHRT_MIN, SHRT_MAX);
@@ -283,15 +265,15 @@ void tone_destroy_callback(void *data)
         stream = tone->stream;
 
         if (stream->data != data)
-            LOG_ERROR("%s(): Confused with data structures", __FUNCTION__);
+            N_ERROR(LOG_CAT "%s(): Confused with data structures", __FUNCTION__);
         else {
             while ((tone = (struct tone *)stream->data) != NULL)
-                tone_destroy(tone, KILL_CHAIN);
+                tone_destroy(tone, true);
         }
     }
 }
 
-static void setup_envelop_for_tone(struct tone *tone, int type, 
+static void setup_envelop_for_tone(struct tone *tone, tone_type type,
                                    uint32_t play, uint32_t duration)
 {
     switch (type) {
@@ -299,8 +281,8 @@ static void setup_envelop_for_tone(struct tone *tone, int type,
     case TONE_DIAL:
     case TONE_DTMF_IND_L:
     case TONE_DTMF_IND_H:
-        tone->reltime = FALSE;
-        tone->envelop = envelop_create(ENVELOP_RAMP_LINEAR, 10000, 0,duration);
+        tone->reltime = false;
+        tone->envelop = envelop_create(ENVELOP_RAMP_LINEAR, 10000, 0, duration);
         break;
 
     case TONE_BUSY:
@@ -311,12 +293,12 @@ static void setup_envelop_for_tone(struct tone *tone, int type,
     case TONE_RING:
     case TONE_DTMF_L:
     case TONE_DTMF_H:
-        tone->reltime = TRUE;
+        tone->reltime = true;
         tone->envelop = envelop_create(ENVELOP_RAMP_LINEAR, 10000, 0, play);
         break;
 
     case TONE_ERROR:
-        tone->reltime = TRUE;
+        tone->reltime = true;
         tone->envelop = envelop_create(ENVELOP_RAMP_LINEAR, 3000, 0, play);
         break;
 
@@ -324,10 +306,3 @@ static void setup_envelop_for_tone(struct tone *tone, int type,
         break;
     }
 }
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

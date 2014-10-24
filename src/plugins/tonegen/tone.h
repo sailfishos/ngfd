@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -22,33 +23,30 @@ USA.
 #ifndef __TONEGEND_TONE_H__
 #define __TONEGEND_TONE_H__
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
 #include <stdint.h>
-
-#define PRESERVE_CHAIN   0
-#define KILL_CHAIN       1
+#include <stdbool.h>
 
 /*
  * predefined tone types
  */
-#define TONE_UNDEFINED       0
-#define TONE_DIAL            1
-#define TONE_BUSY            2
-#define TONE_CONGEST         3
-#define TONE_RADIO_ACK       4
-#define TONE_RADIO_NA        5
-#define TONE_ERROR           6
-#define TONE_WAIT            7
-#define TONE_RING            8
-#define TONE_DTMF_IND_L      9
-#define TONE_DTMF_IND_H      10
-#define TONE_DTMF_L          11
-#define TONE_DTMF_H          12
-#define TONE_NOTE_0          13
-#define TONE_SINGEN_END      14
+typedef enum _tone_type {
+    TONE_UNDEFINED    = 0,
+    TONE_DIAL         = 1,
+    TONE_BUSY         = 2,
+    TONE_CONGEST      = 3,
+    TONE_RADIO_ACK    = 4,
+    TONE_RADIO_NA     = 5,
+    TONE_ERROR        = 6,
+    TONE_WAIT         = 7,
+    TONE_RING         = 8,
+    TONE_DTMF_IND_L   = 9,
+    TONE_DTMF_IND_H   = 10,
+    TONE_DTMF_L       = 11,
+    TONE_DTMF_H       = 12,
+    TONE_NOTE_0       = 13,
+    TONE_SINGEN_END   = 14,
+    TONE_MAX          = 15
+} tone_type;
 
 #define BACKEND_UNKNOWN      0
 #define BACKEND_SINGEN       1
@@ -69,7 +67,7 @@ struct tone {
     struct tone       *next;
     struct stream     *stream;
     struct tone       *chain;
-    int                type;
+    tone_type          type;
     uint32_t           period;   /* period (ie. play+pause) length */
     uint32_t           play;     /* how long to play the sine */
     uint64_t           start;
@@ -78,26 +76,18 @@ struct tone {
     union {
         struct singen  singen;
     };
-    int                reltime; /* relative time to be passed to env. func's */
+    bool               reltime; /* relative time to be passed to env. func's */
     union envelop     *envelop;
 };
 
 
-int tone_init(int, char **);
-struct tone *tone_create(struct stream *, int, uint32_t, uint32_t,
-                         uint32_t, uint32_t, uint32_t, uint32_t);
-void tone_destroy(struct tone *, int);
-int tone_chainable(int);
-uint32_t tone_write_callback(struct stream *, int16_t *, int);
-void tone_destroy_callback(void *);
+int tone_init(void);
+struct tone *tone_create(struct stream *stream, tone_type type, uint32_t freq, uint32_t volume,
+                         uint32_t period,uint32_t play, uint32_t start, uint32_t duration);
+void tone_destroy(struct tone *tone, bool kill_chain);
+bool tone_chainable(tone_type type);
+uint32_t tone_write_callback(struct stream *stream, int16_t *buf, int length);
+void tone_destroy_callback(void *data);
 
 
 #endif /* __TONEGEND_TONE_H__ */
-
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

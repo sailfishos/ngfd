@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -22,27 +23,16 @@ USA.
 #ifndef __TONEGEND_TONEGEND_H__
 #define __TONEGEND_TONEGEND_H__
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
 #include <stdint.h>
 
 struct dbusif;
 struct ausrv;
-struct interact;
+struct ngfif;
 
 struct tonegend {
+    struct ngfif     *ngfd_ctx;
     struct dbusif    *dbus_ctx;
     struct ausrv     *ausrv_ctx;
-    struct interact  *intact_ctx;
 };
 
 #endif /* __TONEGEND_TONEGEND_H__ */
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

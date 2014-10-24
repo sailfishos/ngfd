@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -22,15 +23,15 @@ USA.
 #ifndef __TONEGEND_DBUSIF_H__
 #define __TONEGEND_DBUSIF_H__
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
 #include <stdint.h>
 
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus.h>
 #include <dbus/dbus-glib-lowlevel.h>
+
+#define TELEPHONY_TONES_PATH        "/com/Nokia/Telephony/Tones"
+#define TELEPHONY_TONES_SERVICE     "com.Nokia.Telephony.Tones"
+
 
 struct tonegend;
 
@@ -43,21 +44,16 @@ struct dbusif {
 int dbusif_init(int, char **);
 void dbusif_exit(void);
 
-struct dbusif *dbusif_create(struct tonegend *);
+struct dbusif *dbusif_create(struct tonegend *tonegend);
+struct dbusif *dbusif_create_full(struct tonegend *tonegend);
 void dbusif_destroy(struct dbusif *);
 
-int dbusif_register_input_method(struct tonegend *, char *, char *, char *, 
-                                 int (*)(DBusMessage *, struct tonegend *));
-int dbusif_unregister_input_method(struct tonegend *, char *, char *, char *);
+int dbusif_register_input_method(struct tonegend *tonegend,
+                                 const char *intf, const char *memb, const char *sign,
+                                 int (*method)(DBusMessage *method, struct tonegend *));
+int dbusif_unregister_input_method(struct tonegend *tonegend,
+                                   const char *intf, const char *memb, const char *sign);
 
-int dbusif_send_signal(struct tonegend *, char *, char *, int, ...);
-
+int dbusif_send_signal(struct tonegend *, const char *intf, const char *name, int, ...);
 
 #endif /* __TONEGEND_DBUSIF_H__ */
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -22,10 +23,7 @@ USA.
 #ifndef __TONEGEND_STREAM_H__
 #define __TONEGEND_STREAM_H__
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
+#include <stdbool.h>
 #include <pulse/pulseaudio.h>
 
 #define STREAM_INDICATOR    "indtone"
@@ -68,11 +66,11 @@ struct stream {
     uint64_t           start;    /* wall clock time of stream creation */
     uint32_t           time;     /* buffer time in usecs */
     uint32_t           end;      /* buffer timeout for the stream in usec */
-    int                flush;    /* flush on destroy */
-    int                killed;
+    bool               flush;    /* flush on destroy */
+    bool               killed;
     uint32_t           bufsize;  /* write-ahead-buffer size (ie. minreq) */
     uint32_t           bcnt;     /* byte count */
-    uint32_t         (*write)(struct stream *, int16_t *, int);
+    uint32_t         (*write)(struct stream *s, int16_t *samples, int length);
     void             (*destroy)(void *);
     void              *data;     /* extension */
     struct stream_stat stat;     /* statistics */
@@ -83,27 +81,23 @@ struct stream {
     }                  buf;
 };
 
-int stream_init(int, char **);
-void stream_set_default_samplerate(uint32_t);
-void stream_print_statistics(int);
-void stream_buffering_parameters(int, int);
-struct stream *stream_create(struct ausrv *, char *, char *, uint32_t,
-                             uint32_t (*)(struct stream *, int16_t*, int),
-                             void (*)(void*), void *, void *);
-void stream_destroy(struct stream *);
-void stream_set_timeout(struct stream *, uint32_t);
-void stream_kill_all(struct ausrv *);
-void stream_clean_buffer(struct stream *);
-struct stream *stream_find(struct ausrv *, char *);
-void *stream_parse_properties(char *);
-void stream_free_properties(void *);
+int stream_init(void);
+void stream_set_default_samplerate(uint32_t rate);
+void stream_print_statistics(bool print);
+void stream_buffering_parameters(int tlen, int minreq);
+struct stream *stream_create(struct ausrv *ausrv, const char *name, const char *sink, uint32_t sample_rate,
+                             uint32_t (*write)(struct stream *s, int16_t *samples, int length),
+                             void (*destroy)(void* data),
+                             void *proplist,
+                             void *data);
+void stream_destroy(struct stream *stream);
+void stream_set_timeout(struct stream *stream, uint32_t timeout);
+void stream_kill_all(struct ausrv *ausrv);
+void stream_clean_buffer(struct stream *stream);
+struct stream *stream_find(struct ausrv *stream, char *name);
+void *stream_parse_properties(const char *propstring);
+void *stream_merge_properties(void *proplist, const char *extra_properties);
+void stream_free_properties(void *proplist);
 
 
 #endif /* __TONEGEND_STREAM_H__ */
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

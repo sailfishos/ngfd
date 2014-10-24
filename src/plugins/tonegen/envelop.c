@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -25,23 +26,12 @@ USA.
 #include <string.h>
 #include <errno.h>
 
-#include <log/log.h>
+#include <ngf/log.h>
 #include <trace/trace.h>
 
 #include "envelop.h"
-#ifndef TRUE
-#define TRUE  1
-#endif
-#ifndef FALSE
-#define FALSE 0
-#endif
 
-#define LOG_ERROR(f, args...) log_error(logctx, f, ##args)
-#define LOG_INFO(f, args...) log_error(logctx, f, ##args)
-#define LOG_WARNING(f, args...) log_error(logctx, f, ##args)
-
-#define TRACE(f, args...) trace_write(trctx, trflags, trkeys, f, ##args)
-
+#define LOG_CAT "tonegen-envelop: "
 
 static inline union envelop *ramp_create(int type, uint32_t length,
                                          uint32_t start, uint32_t end)
@@ -118,11 +108,8 @@ static inline int32_t ramp_apply(union envelop *envelop, int32_t in,uint32_t t)
 }
 
 
-int envelop_init(int argc, char **argv)
+int envelop_init(void)
 {
-    (void)argc;
-    (void)argv;
-
     return 0;
 }
 
@@ -186,10 +173,3 @@ int32_t envelop_apply(union envelop *envelop, int32_t in, uint32_t t)
 
     return out;
 }
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -22,11 +23,8 @@ USA.
 #ifndef __TONEGEND_AUSRV_H__
 #define __TONEGEND_AUSRV_H__
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
 #include <glib.h>
+#include <stdbool.h>
 
 #include <pulse/pulseaudio.h>
 #include <pulse/glib-mainloop.h>
@@ -37,7 +35,7 @@ struct stream;
 struct ausrv {
     struct tonegend   *tonegend;
     char              *server;
-    int                connected;
+    bool               connected;
     pa_glib_mainloop  *mainloop;
     pa_context        *context;
     pa_time_event     *timer;
@@ -46,18 +44,11 @@ struct ausrv {
 };
 
 
-int ausrv_init(int, char **);
+int ausrv_init(void);
 void ausrv_exit(void);
 
-struct ausrv *ausrv_create(struct tonegend *, char *);
-void ausrv_destroy(struct ausrv *);
+struct ausrv *ausrv_create(struct tonegend *tonegend, const char *server);
+void ausrv_destroy(struct ausrv *ausrv);
 
 
 #endif /* __TONEGEND_AUSRV_H__ */
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */

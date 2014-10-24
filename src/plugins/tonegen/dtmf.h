@@ -1,7 +1,8 @@
 /*************************************************************************
-This file is part of tone-generator
+This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
+              2015 Jolla Ltd.
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -22,41 +23,34 @@ USA.
 #ifndef __TONEGEND_DTMF_H__
 #define __TONEGEND_DTMF_H__
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
 #include <stdint.h>
 
-#define DTMF_0          0
-#define DTMF_1          1
-#define DTMF_2          2
-#define DTMF_3          3
-#define DTMF_4          4
-#define DTMF_5          5
-#define DTMF_6          6
-#define DTMF_7          7
-#define DTMF_8          8
-#define DTMF_9          9
-#define DTMF_ASTERISK   10
-#define DTMF_HASHMARK   11
-#define DTMF_A          12
-#define DTMF_B          13
-#define DTMF_C          14
-#define DTMF_D          15
-#define DTMF_MAX        16
+typedef enum _dtmf_tone {
+    DTMF_0        = 0,
+    DTMF_1        = 1,
+    DTMF_2        = 2,
+    DTMF_3        = 3,
+    DTMF_4        = 4,
+    DTMF_5        = 5,
+    DTMF_6        = 6,
+    DTMF_7        = 7,
+    DTMF_8        = 8,
+    DTMF_9        = 9,
+    DTMF_ASTERISK = 10,
+    DTMF_HASHMARK = 11,
+    DTMF_A        = 12,
+    DTMF_B        = 13,
+    DTMF_C        = 14,
+    DTMF_D        = 15,
+    DTMF_MAX      = 16
+} dtmf_tone;
 
-int  dtmf_init(int, char **);
-void dtmf_play(struct ausrv *, uint, uint32_t, int);
-void dtmf_stop(struct ausrv *);
-void dtmf_set_properties(char *);
-void dtmf_set_volume(uint32_t);
+int  dtmf_init(void);
+void dtmf_play(struct ausrv *ausrv, dtmf_tone tone,
+               uint32_t volume, int duration, const char *extra_properties);
+void dtmf_stop(struct ausrv *ausrv);
+void dtmf_set_properties(char *propstring);
+void dtmf_set_volume(uint32_t volume);
+void dtmf_enable_mute_signal(gboolean enable);
 
 #endif /* __TONEGEND_DTMF_H__ */
-
-/*
- * Local Variables:
- * c-basic-offset: 4
- * indent-tabs-mode: nil
- * End:
- */
