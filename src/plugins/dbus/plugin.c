@@ -462,7 +462,7 @@ static DBusHandlerResult
 dbusif_introspect_handler (DBusConnection *connection, DBusMessage *msg)
 {
 
-    N_DEBUG (LOG_CAT "Introspect was called!");
+    N_DEBUG (LOG_CAT "Introspect was called from %s", dbus_message_get_sender(msg));
 
     DBusMessage *reply = NULL;
 
