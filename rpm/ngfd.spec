@@ -25,6 +25,8 @@ BuildRequires:  pkgconfig(mce)
 BuildRequires:  pkgconfig(profile)
 BuildRequires:  pkgconfig(libcanberra)
 BuildRequires:  doxygen
+Obsoletes:      tone-generator <= 1.5.4
+Provides:       tone-generator > 1.5.4
 
 %description
 This package contains the daemon servicing the non-graphical feedback
