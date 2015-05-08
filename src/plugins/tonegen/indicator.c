@@ -56,7 +56,7 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
 {
     struct stream *stream  = stream_find(ausrv, ind_stream);
     uint32_t       timeout = duration ?: MAX_TONE_LENGTH;
-    
+
     if (stream != NULL) {
         dtmf_stop(ausrv);
         indicator_stop(ausrv, false);
@@ -75,9 +75,9 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
     }
 
     volume = (vol_scale * volume) / 100;
-    
+
     switch (type) {
-        
+
     case TONE_DIAL:
         switch (standard) {
         case STD_CEPT:
@@ -94,7 +94,7 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
         }
         timeout = MAX_TONE_LENGTH;
         break;
-        
+
     case TONE_BUSY:
         switch (standard) {
         case STD_CEPT:
@@ -110,7 +110,7 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
             break;
         }
         break;
-        
+
     case TONE_CONGEST:
         switch (standard) {
         case STD_CEPT:
@@ -130,7 +130,7 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
             break;
         }
         break;
-        
+
     case TONE_RADIO_ACK:
         switch (standard) {
         case STD_CEPT:
@@ -146,7 +146,7 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
             break;
         }
         break;
-        
+
     case TONE_RADIO_NA:
         switch (standard) {
         case STD_CEPT:
@@ -159,7 +159,7 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
         }
         timeout = MAX_SHORT_TONE_LENGTH;
         break;
-        
+
     case TONE_ERROR:
         switch (standard) {
         case STD_CEPT:
@@ -178,7 +178,7 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
             break;
         }
         break;
-        
+
     case TONE_WAIT:
         switch (standard) {
         case STD_CEPT:
@@ -199,7 +199,7 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
         }
         timeout = MAX_TONE_LENGTH;
         break;
-        
+
     case TONE_RING:
         switch (standard) {
         case STD_CEPT:
@@ -215,7 +215,7 @@ void indicator_play(struct ausrv *ausrv, int type, uint32_t volume, int duration
         }
         timeout = MAX_TONE_LENGTH;
         break;
-        
+
     default:
         N_ERROR(LOG_CAT "%s(): invalid type %d", __FUNCTION__, type);
         break;
@@ -230,11 +230,11 @@ void indicator_stop(struct ausrv *ausrv, bool kill_stream)
     struct tone   *tone;
     struct tone   *hd;
 
-    TRACE("%s(kill_stream=%s) stream=%s", __FUNCTION__, 
+    TRACE("%s(kill_stream=%s) stream=%s", __FUNCTION__,
           kill_stream ? "true":"false", stream ? stream->name:"<no-stream>");
-    
+
     if (stream != NULL) {
-        if (kill_stream) 
+        if (kill_stream)
             stream_destroy(stream);
         else {
             /* destroy all but DTMF tones */

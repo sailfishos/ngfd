@@ -93,7 +93,7 @@ void dtmf_play(struct ausrv *ausrv, dtmf_tone tone, uint32_t volume, int duratio
     int            type_h = TONE_DTMF_H;
     uint32_t       timeout;
     void          *properties = dtmf_props;
-        
+
     if (tone >= DTMF_MAX || (duration != 0 && duration < 10000))
         return;
 
@@ -160,7 +160,7 @@ void dtmf_stop(struct ausrv *ausrv)
             next = tone->next;
 
             switch (tone->type) {
-                
+
             case TONE_DTMF_IND_L:
             case TONE_DTMF_IND_H:
                 /* in the future a linear ramp-down enevlop can be set */
@@ -178,7 +178,7 @@ void dtmf_stop(struct ausrv *ausrv)
             stream_clean_buffer(stream);
 
         stream_set_timeout(stream, 10 * 1000000);
-        set_mute_timeout(ausrv, 2 * 1000000);        
+        set_mute_timeout(ausrv, 2 * 1000000);
     }
 }
 

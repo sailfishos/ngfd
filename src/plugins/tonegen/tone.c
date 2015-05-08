@@ -75,10 +75,10 @@ int tone_init(void)
 
 struct tone *tone_create(struct stream *stream,
                          tone_type      type,
-                         uint32_t       freq, 
+                         uint32_t       freq,
                          uint32_t       volume,
                          uint32_t       period,
-                         uint32_t       play, 
+                         uint32_t       play,
                          uint32_t       start,
                          uint32_t       duration)
 {
@@ -117,7 +117,7 @@ struct tone *tone_create(struct stream *stream,
     tone->play    = play;
     tone->start   = (uint64_t)(time + start) * SCALE;
     tone->end     = duration ? tone->start + (uint64_t)(duration * SCALE) : 0;
-    
+
     setup_envelop_for_tone(tone, type, play, duration);
 
     if (!freq)
@@ -165,7 +165,7 @@ void tone_destroy(struct tone *tone, bool kill_chain)
                 else {
                     prev->next = link;
                     link->next = tone->next;
-                } 
+                }
             }
             envelop_destroy(tone->envelop);
             free(tone);
@@ -199,7 +199,7 @@ uint32_t tone_write_callback(struct stream *stream, int16_t *buf, int len)
     int32_t        sine;
     int32_t        sample;
     int            i;
-    
+
     t  = (uint64_t)stream->time * SCALE;
     dt = (1000000ULL * SCALE) / (uint64_t)stream->rate;
 
@@ -241,14 +241,14 @@ uint32_t tone_write_callback(struct stream *stream, int16_t *buf, int len)
                       sample, SHRT_MIN, SHRT_MAX);
             }
 #endif
-            
+
             if (sample > SHRT_MAX)
                 buf[i] = SHRT_MAX;
             else if (sample < SHRT_MIN)
                 buf[i] = SHRT_MIN;
             else
                 buf[i] = sample;
-            
+
             t += dt;
         }
     }

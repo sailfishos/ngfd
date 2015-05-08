@@ -121,7 +121,7 @@ struct stream *stream_create(struct ausrv *ausrv,
     spec.rate     = sample_rate;
     spec.channels = 1;          /* e.g. MONO */
 
-    
+
     if (min_bufreq > 0)
         bufsize = pa_usec_to_bytes(min_bufreq * PA_USEC_PER_MSEC, &spec);
     else
@@ -166,12 +166,12 @@ struct stream *stream_create(struct ausrv *ausrv,
 
     if (stream->pastr == NULL) {
         free(stream->name);
-        
+
         free(stream);
 
         TRACE("%s(): stream creation of '%s' failed", __FUNCTION__, name);
 
-        return NULL;    
+        return NULL;
     }
 
     /* these are for the 48Khz mono 16bit streams */
@@ -300,8 +300,8 @@ void stream_destroy(struct stream *stream)
 
                 avbuf  = stream->bcnt / stat->wrcnt;
                 avcpu  = (stat->cpucalc / stat->wrcnt) / 1000;
-                avcalc = (uint32_t)(stat->sumcalc/(uint64_t)stat->wrcnt)/1000; 
-                avgap  = (uint32_t)(stat->sumgap /(uint64_t)stat->wrcnt)/1000; 
+                avcalc = (uint32_t)(stat->sumcalc/(uint64_t)stat->wrcnt)/1000;
+                avgap  = (uint32_t)(stat->sumgap /(uint64_t)stat->wrcnt)/1000;
 
                 TRACE("stream '%s' killed. Statistics:\n"
                       "   up %.3lfsec tone %.3lfsec\n"
@@ -471,7 +471,7 @@ static pa_proplist *parse_properties(pa_proplist *proplist, const char *propstri
     }
 
     return proplist;
-    
+
  error:
     pa_proplist_free(proplist);
     return NULL;
@@ -550,7 +550,7 @@ static void underflow_callback(pa_stream *pastr, void *userdata)
 
     struct stream *stream = (struct stream *)userdata;
 
-    if (!stream || !stream->name) 
+    if (!stream || !stream->name)
         N_ERROR(LOG_CAT "Stream underflow");
     else {
         N_ERROR(LOG_CAT "Stream '%s' underflow", stream->name);
@@ -567,7 +567,7 @@ static void suspended_callback(pa_stream *pastr, void *userdata)
 
     struct stream *stream = (struct stream *)userdata;
 
-    if (!stream || !stream->name) 
+    if (!stream || !stream->name)
         N_ERROR(LOG_CAT "Stream suspended");
     else {
         N_ERROR(LOG_CAT "Stream '%s' suspended", stream->name);
@@ -650,13 +650,13 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
         stream->buf.samples = NULL;
         stream->buf.cpu = 0;
     }
-        
+
 
     if (samples != NULL) {
 
         if (print_statistics) {
             gettimeofday(&tv, NULL);
-            calcend = (uint64_t)tv.tv_sec * (uint64_t)1000000 + 
+            calcend = (uint64_t)tv.tv_sec * (uint64_t)1000000 +
                       (uint64_t)tv.tv_usec;
             calc    = calcend - start;
             period  = (calcend - stat->wrtime) / 1000;
@@ -673,23 +673,23 @@ static void write_callback(pa_stream *pastr, size_t bytes, void *userdata)
                 stat->sumgap += gap;
                 stat->sumcalc += calc;
                 stat->cpucalc += cpu;
-                
+
                 if (buflen < stat->minbuf) stat->minbuf = buflen;
                 if (buflen > stat->maxbuf) stat->maxbuf = buflen;
-                
+
                 if (gap < stat->mingap) stat->mingap = gap;
                 if (gap > stat->maxgap) stat->maxgap = gap;
-                
+
                 if (calc < stat->mincalc) stat->mincalc = calc;
                 if (calc > stat->maxcalc) stat->maxcalc = calc;
 
 #ifdef ENABLE_VERBOSE_TRACE
                 TRACE("Buffer writting period %umsec", period);
 #endif
-                
+
                 if (period > (uint32_t)min_bufreq) {
                     stat->late++;
-                    
+
 #ifdef ENABLE_VERBOSE_TRACE
                     TRACE("Buffer is late %umsec in stream '%s'",
                           period - min_bufreq, stream->name);
@@ -782,7 +782,7 @@ static void write_samples(struct stream *stream, int16_t *samples,
     cpubeg = print_statistics ? clock() : 0;
 
     stream->time = stream->write(stream, samples, length);
- 
+
     cpuend = print_statistics ? clock() : 0;
 
     *cpu = cpuend - cpubeg;

@@ -51,7 +51,7 @@ int dbusif_init(int argc, char **argv)
 
 void dbsuif_exit(void)
 {
-    
+
 }
 
 struct dbusif *dbusif_create(struct tonegend *tonegend)
@@ -278,7 +278,7 @@ static DBusHandlerResult handle_message(DBusConnection *conn,
         }
 
         dbus_message_set_reply_serial(msg, ser);
-        
+
         if (!dbus_connection_send(dbusif->conn, reply, NULL))
             N_ERROR(LOG_CAT "%s(): D-Bus message reply failure", __FUNCTION__);
         else
@@ -286,7 +286,7 @@ static DBusHandlerResult handle_message(DBusConnection *conn,
 
         dbus_message_unref(reply);
     }
-    
+
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 

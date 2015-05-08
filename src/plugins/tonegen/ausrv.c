@@ -82,7 +82,7 @@ struct ausrv *ausrv_create(struct tonegend *tonegend, const char *server)
         N_ERROR(LOG_CAT "%s(): pa_signal_init() failed", __FUNCTION__);
         goto failed;
     }
-    
+
     ausrv->tonegend = tonegend;
     ausrv->server   = strdup(server ?: DEFAULT_SERVER);
     ausrv->mainloop = mainloop;
@@ -109,10 +109,10 @@ void ausrv_destroy(struct ausrv *ausrv)
 
         if (ausrv->context != NULL)
             pa_context_unref(ausrv->context);
-        
+
         if (ausrv->mainloop != NULL)
             pa_glib_mainloop_free(ausrv->mainloop);
-        
+
         free(ausrv->server);
         free(ausrv);
     }
@@ -149,28 +149,28 @@ static void context_callback(pa_context *context, void *userdata)
         TRACE("ausrv: connecting to server");
         set_connection_status(ausrv, false);
         break;
-        
+
     case PA_CONTEXT_AUTHORIZING:
         TRACE("ausrv: authorizing");
         set_connection_status(ausrv, false);
         break;
-        
+
     case PA_CONTEXT_SETTING_NAME:
         TRACE("ausrv: setting name");
         set_connection_status(ausrv, false);
         break;
-        
+
     case PA_CONTEXT_READY:
         TRACE("ausrv: connection established.");
         set_connection_status(ausrv, true);
         cancel_timer(ausrv);
         N_DEBUG(LOG_CAT "PulseAudio OK");
         break;
-        
+
     case PA_CONTEXT_TERMINATED:
         TRACE("ausrv: connection to server terminated");
         goto disconnect;
-        
+
     case PA_CONTEXT_FAILED:
     default:
         if ((err = pa_context_errno(context)) != 0) {
@@ -195,7 +195,7 @@ static void event_callback(pa_context                   *context,
     struct ausrv *ausrv = (struct ausrv *)userdata;
 
     (void)idx;
-  
+
     if (ausrv == NULL || ausrv->context != context)
         N_ERROR(LOG_CAT "%s(): Confused with data structures", __FUNCTION__);
     else {
@@ -232,7 +232,7 @@ static void retry_connect(pa_mainloop_api *api, pa_time_event *event,
 
     (void)api;
     (void)tv;
-    
+
     if (event != ausrv->timer) {
         N_ERROR(LOG_CAT "%s(): Called with unknown timer (%p != %p)", __FUNCTION__,
                   event, ausrv->timer);
@@ -252,7 +252,7 @@ static void restart_timer(struct ausrv *ausrv, int secs)
 
     gettimeofday(&tv, NULL);
     tv.tv_sec += secs;
-    
+
     if (ausrv->timer != NULL)
         api->time_restart(ausrv->timer, &tv);
     else
@@ -263,7 +263,7 @@ static void restart_timer(struct ausrv *ausrv, int secs)
 static void cancel_timer(struct ausrv *ausrv)
 {
     pa_mainloop_api *api;
-    
+
     if (ausrv->timer != NULL) {
         api = pa_glib_mainloop_get_api(ausrv->mainloop);
         api->time_free(ausrv->timer);
@@ -282,8 +282,8 @@ static void connect_server(struct ausrv *ausrv)
 
     if (server != NULL && !strcmp(ausrv->server, DEFAULT_SERVER))
         server = NULL;
-    
-    
+
+
     /*
      * Note: It is not possible to reconnect a context if it ever gets
      *     disconnected. If we have a context here, get rid of it and
@@ -295,12 +295,12 @@ static void connect_server(struct ausrv *ausrv)
         pa_context_unref(ausrv->context);
         ausrv->context = NULL;
     }
-    
+
     if ((ausrv->context = pa_context_new(api, pa_client_name)) == NULL) {
         N_ERROR(LOG_CAT "%s(): pa_context_new() failed, exiting", __FUNCTION__);
         exit(1);
     }
-    
+
     pa_context_set_state_callback(ausrv->context, context_callback, ausrv);
     pa_context_set_subscribe_callback(ausrv->context, event_callback, ausrv);
 

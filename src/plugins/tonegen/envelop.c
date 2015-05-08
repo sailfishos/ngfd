@@ -53,7 +53,7 @@ static inline union envelop *ramp_create(int type, uint32_t length,
         up->k2    = length / up->k1;
         up->start = start;
         up->end   = start + length;
-        
+
         if (end < start + (length * 2)) {
             down->k1    = 1;
             down->k2    = 1;
