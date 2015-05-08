@@ -45,15 +45,7 @@ int dbusif_init(int, char **);
 void dbusif_exit(void);
 
 struct dbusif *dbusif_create(struct tonegend *tonegend);
-struct dbusif *dbusif_create_full(struct tonegend *tonegend);
-void dbusif_destroy(struct dbusif *);
-
-int dbusif_register_input_method(struct tonegend *tonegend,
-                                 const char *intf, const char *memb, const char *sign,
-                                 int (*method)(DBusMessage *method, struct tonegend *));
-int dbusif_unregister_input_method(struct tonegend *tonegend,
-                                   const char *intf, const char *memb, const char *sign);
-
+void dbusif_destroy(struct dbusif *dbusif);
 int dbusif_send_signal(struct tonegend *, const char *intf, const char *name, int, ...);
 
 #endif /* __TONEGEND_DBUSIF_H__ */

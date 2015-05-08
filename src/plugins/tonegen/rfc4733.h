@@ -43,7 +43,6 @@ typedef enum tone_event_ {
 
 int rfc4733_init(void);
 int rfc4733_create(struct tonegend *tonegend);
-int rfc4733_create_ngfd(struct tonegend *tonegend);
 void rfc4733_destroy();
 
 #endif /* __NOTFIFD_RFC4733_H__ */

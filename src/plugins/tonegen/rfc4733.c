@@ -42,45 +42,22 @@ USA.
 
 #define LOG_CAT "tonegen-rfc4733: "
 
-struct method {
-    char  *intf;                                    /* interface name */
-    char  *memb;                                    /* method name */
-    char  *sig;                                     /* signature */
-    int  (*func)(DBusMessage *, struct tonegend *); /* implementing function */
-};
-
 struct method_ngfd {
     char  *name;                                        /* tone type */
     int  (*func_start)(NRequest *, struct tonegend *);  /* implementing function */
     int  (*func_stop)(NRequest *, struct tonegend *);   /* implementing function */
 };
 
-static int start_event_tone(DBusMessage *, struct tonegend *);
-static int stop_tone(DBusMessage *, struct tonegend *);
-static int stop_event_tone(DBusMessage *, struct tonegend *);
-static int start_dtmf_tone_ngfd(NRequest *request, struct tonegend *);
-static int start_indicator_tone_ngfd(NRequest *request, struct tonegend *);
-static int stop_dtmf_tone_ngfd(NRequest *request, struct tonegend *);
-static int stop_indicator_tone_ngfd(NRequest *request, struct tonegend *);
+static int start_dtmf_tone(NRequest *request, struct tonegend *);
+static int start_indicator_tone(NRequest *request, struct tonegend *);
+static int stop_dtmf_tone(NRequest *request, struct tonegend *);
+static int stop_indicator_tone(NRequest *request, struct tonegend *);
 static uint32_t linear_volume(int);
 
-#define TONE_INDICATOR      0
-#define TONE_DTMF           1
-#define DBUS_SENDER_MAXLEN  16
-static char tone_sender[2][DBUS_SENDER_MAXLEN];
-
-static struct method  method_defs[] = {
-    {NULL, "StartEventTone", "uiu", start_event_tone},
-    {NULL, "StartNotificationTone", "uiu", start_event_tone}, /* backward compatible */
-    {NULL, "StopTone", "", stop_tone},
-    {NULL, "StopEventTone", "u", stop_event_tone},
-    {NULL, NULL, NULL, NULL}
-};
-
 static struct method_ngfd  method_ngfd_defs[] = {
-    {"dtmf",        start_dtmf_tone_ngfd,       stop_dtmf_tone_ngfd         },
-    {"indicator",   start_indicator_tone_ngfd,  stop_indicator_tone_ngfd    },
-    {NULL,          NULL,                       NULL                        }
+    {"dtmf",        start_dtmf_tone,        stop_dtmf_tone      },
+    {"indicator",   start_indicator_tone,   stop_indicator_tone },
+    {NULL,          NULL,                   NULL                }
 };
 
 static GHashTable *indicator_hash = NULL;
@@ -91,26 +68,6 @@ int rfc4733_init(void)
 }
 
 int rfc4733_create(struct tonegend *tonegend)
-{
-    struct method *m;
-    int err;
-    int sts;
-
-    for (m = method_defs, err = 0;    m->memb != NULL;    m++) {
-        sts = dbusif_register_input_method(tonegend, m->intf, m->memb,
-                                           m->sig, m->func);
-
-        if (sts < 0) {
-            N_ERROR(LOG_CAT "%s(): Can't register D-Bus method '%s'",
-                      __FUNCTION__, m->memb);
-            err = -1;
-        }
-    }
-
-    return err;
-}
-
-int rfc4733_create_ngfd(struct tonegend *tonegend)
 {
     struct method_ngfd *m;
     int sts;
@@ -147,7 +104,7 @@ void rfc4733_destroy()
     }
 }
 
-static int start_indicator_tone_ngfd(NRequest *request, struct tonegend *tonegend)
+static int start_indicator_tone(NRequest *request, struct tonegend *tonegend)
 {
     struct ausrv *ausrv = tonegend->ausrv_ctx;
     gpointer      event_p;
@@ -212,7 +169,7 @@ static int start_indicator_tone_ngfd(NRequest *request, struct tonegend *tonegen
     return TRUE;
 }
 
-static int start_dtmf_tone_ngfd(NRequest *request, struct tonegend *tonegend)
+static int start_dtmf_tone(NRequest *request, struct tonegend *tonegend)
 {
     struct ausrv *ausrv = tonegend->ausrv_ctx;
     uint32_t      event;
@@ -252,7 +209,7 @@ static int start_dtmf_tone_ngfd(NRequest *request, struct tonegend *tonegend)
     return TRUE;
 }
 
-static int stop_dtmf_tone_ngfd(NRequest *request, struct tonegend *tonegend)
+static int stop_dtmf_tone(NRequest *request, struct tonegend *tonegend)
 {
     struct ausrv *ausrv = tonegend->ausrv_ctx;
     (void) request;
@@ -264,7 +221,7 @@ static int stop_dtmf_tone_ngfd(NRequest *request, struct tonegend *tonegend)
     return TRUE;
 }
 
-static int stop_indicator_tone_ngfd(NRequest *request, struct tonegend *tonegend)
+static int stop_indicator_tone(NRequest *request, struct tonegend *tonegend)
 {
     struct ausrv *ausrv = tonegend->ausrv_ctx;
     (void) request;
@@ -272,124 +229,6 @@ static int stop_indicator_tone_ngfd(NRequest *request, struct tonegend *tonegend
     N_DEBUG(LOG_CAT "%s(): stop indicator tone", __FUNCTION__);
 
     indicator_stop(ausrv, true);
-
-    return TRUE;
-}
-
-static int start_event_tone(DBusMessage *msg, struct tonegend *tonegend)
-{
-    struct ausrv *ausrv = tonegend->ausrv_ctx;
-    uint32_t      event;
-    int32_t       dbm0;
-    uint32_t      duration;
-    uint32_t      volume;
-    int           indtype;
-    int           success;
-    char         *sender;
-
-    success = dbus_message_get_args(msg, NULL,
-                                    DBUS_TYPE_UINT32, &event,
-                                    DBUS_TYPE_INT32 , &dbm0,
-                                    DBUS_TYPE_UINT32, &duration,
-                                    DBUS_TYPE_INVALID);
-
-    if (!success) {
-        N_ERROR(LOG_CAT "%s(): Can't parse arguments", __FUNCTION__);
-        return FALSE;
-    }
-
-    volume = linear_volume(dbm0);
-
-    N_DEBUG(LOG_CAT "%s(): event %u  volume %d dbm0 (%u) duration %u msec",
-          __FUNCTION__, event, dbm0, volume, duration);
-
-    sender = (char *)dbus_message_get_sender(msg);
-
-    if (event < DTMF_MAX) {
-        if (tone_sender[TONE_DTMF][0])
-            N_DEBUG(LOG_CAT "%s(): got request to play the second DTMF tone", __FUNCTION__);
-
-        strncpy(tone_sender[TONE_DTMF], sender, DBUS_SENDER_MAXLEN);
-        dtmf_play(ausrv, event, volume, 0, NULL);
-    }
-    else {
-        switch (event) {
-        case EVENT_DIAL:        indtype = TONE_DIAL;        break;
-        case EVENT_BUSY:        indtype = TONE_BUSY;        break;
-        case EVENT_CONGEST:     indtype = TONE_CONGEST;     break;
-        case EVENT_RADIO_ACK:   indtype = TONE_RADIO_ACK;   break;
-        case EVENT_RADIO_NA:    indtype = TONE_RADIO_NA;    break;
-        case EVENT_ERROR:       indtype = TONE_ERROR;       break;
-        case EVENT_WAIT:        indtype = TONE_WAIT;        break;
-        case EVENT_RING:        indtype = TONE_RING;        break;
-
-        default:
-            N_ERROR(LOG_CAT "%s(): invalid event %d", __FUNCTION__, event);
-            return FALSE;
-        }
-
-        if (tone_sender[TONE_INDICATOR][0])
-            N_DEBUG(LOG_CAT "%s(): got request to play the second indicator tone", __FUNCTION__);
-
-        strncpy(tone_sender[TONE_INDICATOR], sender, DBUS_SENDER_MAXLEN);
-        indicator_play(ausrv, indtype, volume, duration * 1000);
-    }
-
-    return TRUE;
-}
-
-static int stop_event_tone(DBusMessage *msg, struct tonegend *tonegend)
-{
-    struct ausrv *ausrv = tonegend->ausrv_ctx;
-    uint32_t      event;
-    int           success;
-
-    success = dbus_message_get_args(msg, NULL,
-                                    DBUS_TYPE_UINT32, &event,
-                                    DBUS_TYPE_INVALID);
-
-    if (!success) {
-        N_ERROR(LOG_CAT "%s(): Can't parse arguments", __FUNCTION__);
-        return FALSE;
-    }
-
-    N_DEBUG(LOG_CAT "%s(): stop %d tone", __FUNCTION__, event);
-
-    if (event < DTMF_MAX) {
-        dtmf_stop(ausrv);
-        tone_sender[TONE_DTMF][0] = 0;
-    } else {
-        indicator_stop(ausrv, true);
-        tone_sender[TONE_INDICATOR][0] = 0;
-    }
-
-    return TRUE;
-}
-
-static int stop_tone(DBusMessage *msg, struct tonegend *tonegend)
-{
-    struct ausrv *ausrv = tonegend->ausrv_ctx;
-    char         *sender;
-
-    (void)msg;
-
-    sender = (char *)dbus_message_get_sender(msg);
-    if (!strncmp(sender, tone_sender[TONE_DTMF], DBUS_SENDER_MAXLEN)) {
-        N_DEBUG(LOG_CAT "%s(): stop DTMF tone", __FUNCTION__);
-        dtmf_stop(ausrv);
-        tone_sender[TONE_DTMF][0] = 0;
-    } else if (!strncmp(sender, tone_sender[TONE_INDICATOR], DBUS_SENDER_MAXLEN)) {
-        N_DEBUG(LOG_CAT "%s(): stop indicator tone", __FUNCTION__);
-        indicator_stop(ausrv, true);
-        tone_sender[TONE_INDICATOR][0] = 0;
-    } else {
-        /* In fallback the safest variant is to stop both type of streams */
-        N_DEBUG(LOG_CAT "%s(): stop DTMF and/or indicator tones", __FUNCTION__);
-        dtmf_stop(ausrv);
-        indicator_stop(ausrv, true);
-        tone_sender[TONE_DTMF][0] = 0;
-        tone_sender[TONE_INDICATOR][0] = 0;
-    }
 
     return TRUE;
 }

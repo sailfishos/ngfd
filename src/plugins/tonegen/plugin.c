@@ -57,7 +57,6 @@ struct properties {
     char               *ind_tags;
     int                 dtmf_volume;
     int                 ind_volume;
-    bool                legacy_api;
 };
 
 struct userdata {
@@ -94,7 +93,6 @@ static struct options_parse options[] = {
     { "tag-indicator"   , prop_string_parser    , NULL, &u.properties.ind_tags    },
     { "volume-dtmf"     , prop_int_parser       , &u.properties.dtmf_volume, NULL },
     { "volume-indicator", prop_int_parser       , &u.properties.ind_volume, NULL  },
-    { "legacy-dbus-api" , prop_bool_parser      , &u.properties.legacy_api, NULL  },
     { NULL              , NULL                  , NULL, NULL                      }
 };
 
@@ -222,7 +220,6 @@ tonegen_sink_initialize (NSinkInterface *iface)
     u.properties.ind_tags = NULL;
     u.properties.dtmf_volume = 100;
     u.properties.ind_volume = 100;
-    u.properties.legacy_api = false;
 
     NProplist *params = (NProplist*) n_plugin_get_params (u.plugin);
     N_DEBUG (LOG_CAT "starting sink");
@@ -248,16 +245,9 @@ tonegen_sink_initialize (NSinkInterface *iface)
 
     u.tonegend.ngfd_ctx = ngfif_create (&u.tonegend);
 
-    if (u.properties.legacy_api) {
-        if ((u.tonegend.dbus_ctx = dbusif_create_full (&u.tonegend)) == NULL) {
-            N_ERROR (LOG_CAT "D-Bus setup failed");
-            return FALSE;
-        }
-    } else {
-        if ((u.tonegend.dbus_ctx = dbusif_create (&u.tonegend)) == NULL) {
-            N_ERROR (LOG_CAT "D-Bus setup failed");
-            return FALSE;
-        }
+    if ((u.tonegend.dbus_ctx = dbusif_create (&u.tonegend)) == NULL) {
+        N_ERROR (LOG_CAT "D-Bus setup failed");
+        return FALSE;
     }
 
     if ((u.tonegend.ausrv_ctx = ausrv_create (&u.tonegend, NULL)) == NULL) {
@@ -265,16 +255,9 @@ tonegen_sink_initialize (NSinkInterface *iface)
         return FALSE;
     }
 
-    if (rfc4733_create_ngfd (&u.tonegend) < 0) {
+    if (rfc4733_create (&u.tonegend) < 0) {
         N_ERROR (LOG_CAT "Can't setup rfc4733 interface on NGFD");
         return FALSE;
-    }
-
-    if (u.properties.legacy_api) {
-        if (rfc4733_create (&u.tonegend) < 0) {
-            N_ERROR (LOG_CAT "Can't setup rfc4733 interface on D-Bus");
-            return FALSE;
-        }
     }
 
     indicator_set_standard (u.properties.standard);
