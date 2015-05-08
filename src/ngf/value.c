@@ -202,7 +202,7 @@ n_value_get_int (const NValue *value)
 void
 n_value_set_uint (NValue *value, const guint in_value)
 {
-    if (!value || !in_value)
+    if (!value)
         return;
 
     value->type    = N_VALUE_TYPE_UINT;

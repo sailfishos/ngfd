@@ -462,7 +462,7 @@ static DBusHandlerResult
 dbusif_introspect_handler (DBusConnection *connection, DBusMessage *msg)
 {
 
-    N_DEBUG (LOG_CAT "Introspect was called!");
+    N_DEBUG (LOG_CAT "Introspect was called from %s", dbus_message_get_sender(msg));
 
     DBusMessage *reply = NULL;
 
@@ -510,13 +510,13 @@ dbusif_message_function (DBusConnection *connection, DBusMessage *msg,
     }
 
     if (member == NULL)
-        return DBUS_HANDLER_RESULT_HANDLED;
+        return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
     if (dbus_message_has_interface (msg, "org.freedesktop.DBus.Introspectable"))
         return dbusif_introspect_handler (connection, msg);
 
     if (!dbus_message_has_interface (msg, NGF_DBUS_IFACE))
-        return DBUS_HANDLER_RESULT_HANDLED;
+        return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
     if (g_str_equal (member, NGF_DBUS_METHOD_PLAY))
         return dbusif_play_handler (connection, msg, iface, ++g_data->event_id);
@@ -527,7 +527,7 @@ dbusif_message_function (DBusConnection *connection, DBusMessage *msg,
     else if (g_str_equal (member, NGF_DBUS_METHOD_PAUSE))
         return dbusif_pause_handler (connection, msg, iface);
 
-    return DBUS_HANDLER_RESULT_HANDLED;
+    return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
 static int

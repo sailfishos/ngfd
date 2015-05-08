@@ -84,22 +84,22 @@ void n_log_message    (NLogLevel level, const char *function, int line, const ch
 
 /** Log function enter message */
 #define N_ENTER(...) \
-    { n_log_message (N_LOG_LEVEL_ENTER, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); }
+    do {  n_log_message (N_LOG_LEVEL_ENTER, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); } while(0)
     
 /** Log debug message */
 #define N_DEBUG(...) \
-    { n_log_message (N_LOG_LEVEL_DEBUG, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); }
+    do { n_log_message (N_LOG_LEVEL_DEBUG, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); } while(0)
 
 /** Log info message */
 #define N_INFO(...) \
-    { n_log_message (N_LOG_LEVEL_INFO, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); }
+    do { n_log_message (N_LOG_LEVEL_INFO, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); } while(0)
 
 /** Log warning message */
 #define N_WARNING(...) \
-    { n_log_message (N_LOG_LEVEL_WARNING, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); }
+    do { n_log_message (N_LOG_LEVEL_WARNING, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); } while(0)
 
 /** Log error message */
 #define N_ERROR(...) \
-    { n_log_message (N_LOG_LEVEL_ERROR, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); }
+    do { n_log_message (N_LOG_LEVEL_ERROR, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); } while(0)
 
 #endif /* N_LOG_H */

@@ -159,7 +159,7 @@ transform_properties_cb (NHook *hook, void *data, void *userdata)
     n_proplist_merge (props, new_props);
     n_proplist_free (new_props);
 
-    N_DEBUG (LOG_CAT "new properties:")
+    N_DEBUG (LOG_CAT "new properties:");
     n_proplist_dump (props);
 }
 
