@@ -482,7 +482,7 @@ make_pipeline (StreamData *stream)
 
     pipeline = gst_pipeline_new (NULL);
     source = gst_element_factory_make ("filesrc", NULL);
-    decoder = gst_element_factory_make ("decodebin2", NULL);
+    decoder = gst_element_factory_make ("decodebin", NULL);
     audioconv = gst_element_factory_make ("audioconvert", NULL);
     volume = gst_element_factory_make ("volume", NULL);
     sink = gst_element_factory_make ("pulsesink", NULL);
