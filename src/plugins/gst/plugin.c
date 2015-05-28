@@ -22,11 +22,10 @@
 #include <ngf/plugin.h>
 
 #include <stdlib.h>
-#include <string.h>
 #include <glib.h>
 #include <gst/gst.h>
+#include <gst/controller/gstcontroller.h>
 #include <gst/controller/gstinterpolationcontrolsource.h>
-#include <gst/controller/gstdirectcontrolbinding.h>
 #include <gio/gio.h>
 
 #define GST_KEY               "plugin.gst.data"
@@ -70,7 +69,7 @@ typedef struct _StreamData
     gboolean repeat_enabled;
     guint restart_source_id;
     gboolean first_play;
-    GstControlSource *source;
+    GstController *controller;
     gdouble last_volume;
     gdouble time_spent;
     gboolean paused;
@@ -97,7 +96,7 @@ static void proplist_to_structure_cb (const char *key, const NValue *value, gpoi
 static GstStructure* create_stream_properties (NProplist *props);
 static gboolean restart_stream_cb (gpointer userdata);
 static gboolean bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata);
-static void new_decoded_pad_cb (GstElement *element, GstPad *pad, gpointer userdata);
+static void new_decoded_pad_cb (GstElement *element, GstPad *pad, gboolean is_last, gpointer userdata);
 static int make_pipeline (StreamData *stream);
 static void free_pipeline (StreamData *stream);
 static int convert_number (const char *str, gint *result);
@@ -187,14 +186,15 @@ get_current_volume (StreamData *stream, gdouble *out_volume)
 static gboolean
 get_current_position (StreamData *stream, gdouble *out_position)
 {
+    GstFormat fmt = GST_FORMAT_TIME;
     gint64 timestamp;
 
-    if (!gst_element_query_position (stream->pipeline, GST_FORMAT_TIME, &timestamp)) {
+    if (!gst_element_query_position (stream->pipeline, &fmt, &timestamp)) {
         N_WARNING (LOG_CAT "unable to query data position");
         return FALSE;
     }
 
-    if (!GST_CLOCK_TIME_IS_VALID (timestamp)) {
+    if (!(GST_CLOCK_TIME_IS_VALID (timestamp) && fmt == GST_FORMAT_TIME)) {
         N_WARNING (LOG_CAT "queried position or format is not valid");
         return FALSE;
     }
@@ -256,7 +256,7 @@ create_stream_properties (NProplist *props)
 {
     g_assert (props != NULL);
 
-    GstStructure *s      = gst_structure_new_empty ("props");
+    GstStructure *s      = gst_structure_empty_new ("props");
     const char   *source = NULL;
     const char   *role   = NULL;
 
@@ -305,11 +305,15 @@ create_volume (StreamData *stream)
     GstInterpolationControlSource *source = NULL;
 
     if (stream->fade_in || stream->fade_out) {
-        stream->source = gst_interpolation_control_source_new ();
-        g_object_set (G_OBJECT (source), "mode", GST_INTERPOLATION_MODE_LINEAR, NULL);
-        gst_object_add_control_binding (GST_OBJECT (stream->volume),
-            gst_direct_control_binding_new (GST_OBJECT (stream->volume), "volume",
-		GST_CONTROL_SOURCE (source)));
+        stream->controller = gst_controller_new (G_OBJECT (stream->volume),
+            "volume", NULL);
+
+        source = gst_interpolation_control_source_new ();
+        gst_controller_set_control_source (stream->controller,
+            "volume", GST_CONTROL_SOURCE (source));
+
+        gst_interpolation_control_source_set_interpolation_mode (
+            source, GST_INTERPOLATE_LINEAR);
 
         set_fade_effect (source, stream->fade_in);
         set_fade_effect (source, stream->fade_out);
@@ -340,9 +344,9 @@ create_volume (StreamData *stream)
 static void
 free_volume (StreamData *stream)
 {
-    if (stream->source) {
-        g_object_unref (G_OBJECT (stream->source));
-        stream->source = NULL;
+    if (stream->controller) {
+        g_object_unref (G_OBJECT (stream->controller));
+        stream->controller = NULL;
     }
 }
 
@@ -447,7 +451,8 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
 }
 
 static void
-new_decoded_pad_cb (GstElement *element, GstPad *pad, gpointer userdata)
+new_decoded_pad_cb (GstElement *element, GstPad *pad, gboolean is_last,
+                    gpointer userdata)
 {
     GstElement   *sink_element = (GstElement*) userdata;
     GstStructure *structure    = NULL;
@@ -455,8 +460,9 @@ new_decoded_pad_cb (GstElement *element, GstPad *pad, gpointer userdata)
     GstPad       *sink_pad     = NULL;
 
     (void) element;
+    (void) is_last;
 
-    caps = gst_pad_get_current_caps (pad);
+    caps = gst_pad_get_caps (pad);
     if (gst_caps_is_empty (caps) || gst_caps_is_any (caps)) {
         gst_caps_unref (caps);
         return;
@@ -464,7 +470,7 @@ new_decoded_pad_cb (GstElement *element, GstPad *pad, gpointer userdata)
 
     structure = gst_caps_get_structure (caps, 0);
     if (g_str_has_prefix (gst_structure_get_name (structure), "audio")) {
-        sink_pad = gst_element_get_static_pad (sink_element, "sink");
+        sink_pad = gst_element_get_pad (sink_element, "sink");
         if (!gst_pad_is_linked (sink_pad))
             gst_pad_link (pad, sink_pad);
         gst_object_unref (sink_pad);
@@ -504,7 +510,7 @@ make_pipeline (StreamData *stream)
         goto failed_pipeline;
     }
 
-    g_signal_connect (G_OBJECT (decoder), "pad-added",
+    g_signal_connect (G_OBJECT (decoder), "new-decoded-pad",
         G_CALLBACK (new_decoded_pad_cb), audioconv);
 
     g_object_set (G_OBJECT (source), "location", stream->filename, NULL);
@@ -620,6 +626,7 @@ gst_sink_initialize (NSinkInterface *iface)
     N_DEBUG (LOG_CAT "initializing GStreamer");
 
     gst_init_check (NULL, NULL, NULL);
+    gst_controller_init (NULL, NULL);
 
     return TRUE;
 }
@@ -726,6 +733,7 @@ parse_volume_fade (const char *str)
 static void
 set_fade_effect (GstInterpolationControlSource *source, FadeEffect *effect)
 {
+    GValue v = {0,{{0}}};
     gdouble start_time, new_length;
 
     if (source == NULL || effect == NULL || !effect->enabled)
@@ -756,11 +764,17 @@ set_fade_effect (GstInterpolationControlSource *source, FadeEffect *effect)
         return;
     }
 
-    gst_timed_value_control_source_set (GST_TIMED_VALUE_CONTROL_SOURCE (source),
-	start_time * GST_SECOND, effect->start);
+    g_value_init (&v, G_TYPE_DOUBLE);
 
-    gst_timed_value_control_source_set (GST_TIMED_VALUE_CONTROL_SOURCE (source),
-        (start_time + new_length) * GST_SECOND, effect->end);
+    g_value_set_double (&v, effect->start);
+    gst_interpolation_control_source_set (source,
+        start_time * GST_SECOND, &v);
+
+    g_value_set_double (&v, effect->end);
+    gst_interpolation_control_source_set (source,
+        (start_time + new_length) * GST_SECOND, &v);
+
+    g_value_unset (&v);
 
     N_DEBUG (LOG_CAT "fade effect (%.2f -> %.2f) to start from %.2f and end at %.2f seconds",
         effect->start, effect->end, start_time, start_time + new_length);
