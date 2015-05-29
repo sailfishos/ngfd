@@ -102,7 +102,7 @@ static int make_pipeline (StreamData *stream);
 static void free_pipeline (StreamData *stream);
 static int convert_number (const char *str, gint *result);
 static FadeEffect* parse_volume_fade (const char *str);
-static void set_fade_effect (GstInterpolationControlSource *source, FadeEffect *effect);
+static void set_fade_effect (GstControlSource *source, FadeEffect *effect);
 static void update_fade_effect (FadeEffect *effect, gdouble elapsed, gdouble volume);
 static void free_fade_effect (FadeEffect *effect);
 static void cleanup (StreamData *stream);
@@ -302,19 +302,15 @@ free_stream_properties (GstStructure *s)
 static int
 create_volume (StreamData *stream)
 {
-    GstInterpolationControlSource *source = NULL;
-
     if (stream->fade_in || stream->fade_out) {
         stream->source = gst_interpolation_control_source_new ();
-        g_object_set (G_OBJECT (source), "mode", GST_INTERPOLATION_MODE_LINEAR, NULL);
+        g_object_set (G_OBJECT (stream->source), "mode", GST_INTERPOLATION_MODE_LINEAR, NULL);
         gst_object_add_control_binding (GST_OBJECT (stream->volume),
             gst_direct_control_binding_new (GST_OBJECT (stream->volume), "volume",
-		GST_CONTROL_SOURCE (source)));
+		GST_CONTROL_SOURCE (stream->source)));
 
-        set_fade_effect (source, stream->fade_in);
-        set_fade_effect (source, stream->fade_out);
-
-        gst_object_unref (source);
+        set_fade_effect (stream->source, stream->fade_in);
+        set_fade_effect (stream->source, stream->fade_out);
 
         return TRUE;
     }
@@ -724,7 +720,7 @@ parse_volume_fade (const char *str)
 }
 
 static void
-set_fade_effect (GstInterpolationControlSource *source, FadeEffect *effect)
+set_fade_effect (GstControlSource *source, FadeEffect *effect)
 {
     gdouble start_time, new_length;
 
