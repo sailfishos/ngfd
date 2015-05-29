@@ -16,6 +16,7 @@ BuildRequires:  pkgconfig(dbus-1) >= 1.0.2
 BuildRequires:  pkgconfig(dbus-glib-1)
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(gstreamer-1.0)
+BuildRequires:  pkgconfig(gstreamer-controller-1.0)
 BuildRequires:  pkgconfig(gio-2.0)
 BuildRequires:  pkgconfig(gobject-2.0)
 BuildRequires:  pkgconfig(gthread-2.0)

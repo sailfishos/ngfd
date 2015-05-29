@@ -118,7 +118,7 @@ AM_CONDITIONAL(BUILD_FFMEMLESS, test x$enable_ffm = xyes)
 
 # GStreamer plugin
 
-PKG_CHECK_MODULES(GST, gstreamer-1.0, [has_gst=yes], [has_gst=no])
+PKG_CHECK_MODULES(GST, gstreamer-1.0 gstreamer-controller-1.0, [has_gst=yes], [has_gst=no])
 AC_SUBST(GST_CFLAGS)
 AC_SUBST(GST_LIBS)
 
