@@ -179,7 +179,11 @@ get_current_volume (StreamData *stream, gdouble *out_volume)
     g_object_get (G_OBJECT (stream->volume),
         "volume", &v, NULL);
 
-    *out_volume = v;
+    /* GStreamer volume element ranges from 0 to 10 and the value of the GObject property
+     * is what has been set by GstController times 10. We need to divide the value by 10
+     * in order to set the correct volume for GstController
+     */
+    *out_volume = v/10;
 
     return TRUE;
 }
