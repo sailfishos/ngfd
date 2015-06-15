@@ -702,8 +702,8 @@ parse_volume_fade (const char *str)
             effect->elapsed  = 0;
             effect->position = position;
             effect->length   = length;
-            effect->start    = start / 100.0;
-            effect->end      = end / 100.0;
+            effect->start    = start / 1000.0;
+            effect->end      = end / 1000.0;
         }
     }
 
