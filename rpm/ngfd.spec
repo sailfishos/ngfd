@@ -4,7 +4,7 @@ Summary:    Non-graphic feedback service for sounds and other events
 Version:    0.92
 Release:    1
 Group:      System/Daemons
-License:    LGPL 2.1
+License:    LGPLv2.1
 URL:        https://meego.gitorious.org/maemo-multimedia/ngfd
 Source0:    %{name}-%{version}.tar.gz
 Source1:    ngfd.service
@@ -69,7 +69,6 @@ This package contains documentation to header files for creating plugins to non-
 
 %package tests
 Summary:    Test suite for ngfd
-Group:      System/Daemons
 Requires:   %{name} = %{version}-%{release}
 Requires:   %{name}-plugin-fake = %{version}-%{release}
 
