@@ -54,6 +54,8 @@ N_PLUGIN_DESCRIPTION ("D-Bus interface")
 
 #define DBUS_CLIENT_MATCH "type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged'"
 
+#define DBUS_MCE_NAME         "com.nokia.mce"
+
 #define RINGTONE_STOP_TIMEOUT 200
 
 static gboolean          msg_parse_variant       (DBusMessageIter *iter,
@@ -501,6 +503,9 @@ dbusif_message_function (DBusConnection *connection, DBusMessage *msg,
         } else {
             if (component && g_str_equal (component, "org.freedesktop.ohm")) {
                 N_INFO (LOG_CAT "Ohmd restarted, stopping all requests");
+                dbusif_stop_all (iface);
+            } else if (component && g_str_equal (component, DBUS_MCE_NAME)) {
+                N_INFO (LOG_CAT DBUS_MCE_NAME " restarted, stopping all requests");
                 dbusif_stop_all (iface);
             } else if (component)
                 dbusif_disconnect_handler (iface, component);
