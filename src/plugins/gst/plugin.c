@@ -68,8 +68,6 @@ typedef struct _StreamData
     GstStructure *properties;
     const gchar *filename;
     gboolean repeat_enabled;
-    guint restart_source_id;
-    gboolean first_play;
     GstControlSource *source;
     gdouble last_volume;
     gdouble time_spent;
@@ -95,7 +93,7 @@ static void set_stream_properties (GstElement *sink, const GstStructure *propert
 static int set_structure_string (GstStructure *s, const char *key, const char *value);
 static void proplist_to_structure_cb (const char *key, const NValue *value, gpointer userdata);
 static GstStructure* create_stream_properties (NProplist *props);
-static gboolean restart_stream_cb (gpointer userdata);
+static void rewind_stream (StreamData *stream);
 static gboolean bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata);
 static void new_decoded_pad_cb (GstElement *element, GstPad *pad, gpointer userdata);
 static int make_pipeline (StreamData *stream);
@@ -346,14 +344,10 @@ free_volume (StreamData *stream)
     }
 }
 
-static gboolean
-restart_stream_cb (gpointer userdata)
+static void
+rewind_stream (StreamData *stream)
 {
-    StreamData *stream = (StreamData*) userdata;
     gdouble position = 0.0;
-
-    stream->restart_source_id = 0;
-    stream->first_play = FALSE;
 
     /* query the current position and volume */
 
@@ -362,31 +356,21 @@ restart_stream_cb (gpointer userdata)
 
     (void) get_current_volume (stream, &stream->last_volume);
 
-    /* stop the previous stream and free it */
-
-    free_pipeline (stream);
- 
     /* update the stream effects */
 
     N_DEBUG (LOG_CAT "fade effect (last volume=%.2f)", stream->last_volume);
 
     update_fade_effect (stream->fade_in, stream->time_spent, stream->last_volume);
     update_fade_effect (stream->fade_out, stream->time_spent, stream->last_volume);
+    set_fade_effect (stream->source, stream->fade_in);
+    set_fade_effect (stream->source, stream->fade_out);
 
-    /* recreate the stream */
-
-    N_DEBUG (LOG_CAT "re-creating pipeline.");
-    if (!make_pipeline (stream)) {
-        n_sink_interface_fail (stream->iface, stream->request);
-        return FALSE;
+    N_DEBUG (LOG_CAT "rewinding pipeline.");
+    if (!gst_element_seek(stream->pipeline, 1.0, GST_FORMAT_TIME,
+                          GST_SEEK_FLAG_FLUSH, GST_SEEK_TYPE_SET, 0,
+                          GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE)) {
+        N_DEBUG (LOG_CAT "failed to seek");
     }
-
-    /* put the stream to the playing state immediately */
-
-    N_DEBUG (LOG_CAT "setting pipeline to playing");
-    gst_element_set_state (stream->pipeline, GST_STATE_PLAYING);
-
-    return FALSE;
 }
 
 static gboolean
@@ -413,6 +397,8 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
             GstState old_state, new_state, pending_state;
             gst_message_parse_state_changed (msg, &old_state, &new_state, &pending_state);
 
+            N_DEBUG (LOG_CAT "state changed: old %d new %d pending %d", old_state, new_state, pending_state);
+
             if (old_state == GST_STATE_READY && new_state == GST_STATE_PAUSED) {
                 N_DEBUG (LOG_CAT "synchronize");
                 n_sink_interface_synchronize (stream->iface, stream->request);
@@ -426,10 +412,8 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
                 break;
 
             if (stream->repeat_enabled) {
-                N_DEBUG (LOG_CAT "rewinding pipeline.");
-                n_sink_interface_resynchronize (stream->iface, stream->request);
-                stream->restart_source_id = g_idle_add (restart_stream_cb, stream);
-                return FALSE;
+                rewind_stream (stream);
+                return TRUE;
             }
 
             N_DEBUG (LOG_CAT "eos");
@@ -825,7 +809,6 @@ gst_sink_prepare (NSinkInterface *iface, NRequest *request)
     stream->filename = n_proplist_get_string (props, SOUND_FILENAME_KEY);
     stream->repeat_enabled = n_proplist_get_bool (props, SOUND_REPEAT_KEY);
     stream->properties = create_stream_properties (props);
-    stream->first_play = TRUE;
 
     enabled = n_proplist_get_string (props, SOUND_ENABLED_KEY);
     stream->sound_enabled = (enabled && g_str_equal(enabled, SOUND_OFF)) ? FALSE : TRUE;
@@ -942,11 +925,6 @@ gst_sink_stop (NSinkInterface *iface, NRequest *request)
 
     stream = (StreamData*) n_request_get_data (request, GST_KEY);
     g_assert (stream != NULL);
-
-    if (stream->restart_source_id > 0) {
-        g_source_remove (stream->restart_source_id);
-        stream->restart_source_id = 0;
-    }
 
     cleanup (stream);
 
