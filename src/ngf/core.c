@@ -31,7 +31,6 @@
 #include "request-internal.h"
 #include "context-internal.h"
 
-#define PATH_LEN 4096
 #define LOG_CAT  "core: "
 
 #define DEFAULT_CONF_PATH     "/usr/share/ngfd"
@@ -71,15 +70,86 @@ n_core_get_path (const char *key, const char *default_path)
 
     const char *env_path = NULL;
     const char *source   = NULL;
-    char        path[PATH_LEN];
 
     source = default_path;
     if (key && (env_path = getenv (key)) != NULL)
         source = env_path;
 
-    strncpy (path, source, PATH_LEN);
-    path[PATH_LEN - 1] = '\0';
-    return g_strdup (path);
+    return g_strdup (source);
+}
+
+static GSList *plugin_conf_files = NULL;
+
+static GSList*
+n_core_plugin_conf_files (NCore *core)
+{
+    gchar          *conf_path = NULL;
+    GDir           *conf_dir  = NULL;
+    const gchar    *filename  = NULL;
+    gchar          *full_name = NULL;
+    GError         *error     = NULL;
+
+    if (plugin_conf_files)
+        return plugin_conf_files;
+
+    conf_path = g_build_path (G_DIR_SEPARATOR_S, core->conf_path, PLUGIN_CONF_PATH, NULL);
+    conf_dir  = g_dir_open (conf_path, 0, &error);
+
+    if (!conf_dir) {
+        N_WARNING (LOG_CAT "could not open configuration dir '%s': %s",
+            conf_path, error->message);
+        g_error_free (error);
+        return NULL;
+    }
+
+    while ((filename = g_dir_read_name (conf_dir))) {
+        full_name = g_build_filename (conf_path, filename, NULL);
+
+        if (g_file_test (full_name, G_FILE_TEST_IS_REGULAR))
+            plugin_conf_files = g_slist_append (plugin_conf_files, full_name);
+        else
+            g_free (full_name);
+    }
+
+    if (plugin_conf_files)
+        plugin_conf_files = g_slist_sort (plugin_conf_files, (GCompareFunc) g_strcmp0);
+
+    g_free (conf_path);
+    g_dir_close (conf_dir);
+
+    return plugin_conf_files;
+}
+
+static void
+n_core_plugin_conf_files_done ()
+{
+    if (plugin_conf_files) {
+        g_slist_free_full (plugin_conf_files, g_free);
+        plugin_conf_files = NULL;
+    }
+}
+
+/* Returns new GSList with filenames for plugin_name. The list should be freed
+ * after use, but the list element data not. */
+static GSList*
+n_core_plugin_conf_files_for_plugin (NCore *core, const char *plugin_name)
+{
+    GSList *plugin = NULL;
+    GSList *i      = NULL;
+    gchar  *suffix = NULL;
+
+    if (n_core_plugin_conf_files (core)) {
+        suffix = g_strdup_printf ("%s.ini", plugin_name);
+
+        for (i = n_core_plugin_conf_files (core); i; i = g_slist_next (i)) {
+            if (g_str_has_suffix (i->data, suffix))
+                plugin = g_slist_append (plugin, i->data);
+        }
+
+        g_free (suffix);
+    }
+
+    return plugin;
 }
 
 static NProplist*
@@ -88,56 +158,55 @@ n_core_load_params (NCore *core, const char *plugin_name)
     g_assert (core != NULL);
     g_assert (plugin_name != NULL);
 
-    NProplist  *proplist  = NULL;
-    GKeyFile   *keyfile   = NULL;
-    gchar      *filename  = NULL;
-    gchar      *full_path = NULL;
-    gchar     **keys      = NULL;
-    gchar     **iter      = NULL;
-    GError     *error     = NULL;
-    gchar      *value     = NULL;
-
-    filename  = g_strdup_printf ("%s.ini", plugin_name);
-    full_path = g_build_filename (core->conf_path, PLUGIN_CONF_PATH, filename, NULL);
-    keyfile   = g_key_file_new ();
-
-    if (!g_key_file_load_from_file (keyfile, full_path, G_KEY_FILE_NONE, &error)) {
-        if (error->code & G_KEY_FILE_ERROR_NOT_FOUND) {
-            N_WARNING (LOG_CAT "problem with configuration file '%s': %s",
-                filename, error->message);
-        }
-
-        goto done;
-    }
-
-    keys = g_key_file_get_keys (keyfile, plugin_name, NULL, NULL);
-    if (!keys) {
-        N_WARNING (LOG_CAT "no group '%s' within configuration file '%s'",
-            plugin_name, filename);
-        goto done;
-    }
+    NProplist      *proplist    = NULL;
+    GKeyFile       *keyfile     = NULL;
+    gchar         **keys        = NULL;
+    gchar         **iter        = NULL;
+    GError         *error       = NULL;
+    gchar          *value       = NULL;
+    GSList         *plugin_conf = NULL;
+    GSList         *i           = NULL;
+    const gchar    *filename    = NULL;
 
     proplist = n_proplist_new ();
-    for (iter = keys; *iter; ++iter) {
-        if ((value = g_key_file_get_string (keyfile, plugin_name, *iter, NULL)) == NULL)
-            continue;
+    keyfile = g_key_file_new ();
+    plugin_conf = n_core_plugin_conf_files_for_plugin (core, plugin_name);
 
-        N_DEBUG (LOG_CAT "+ plugin parameter: %s = %s", *iter, value);
-        n_proplist_set_string (proplist, *iter, value);
-        g_free (value);
+    for (i = plugin_conf; i; i = g_slist_next (i)) {
+        filename = (const gchar*) i->data;
+
+        if (!g_key_file_load_from_file (keyfile, filename, G_KEY_FILE_NONE, &error)) {
+            N_WARNING (LOG_CAT "problem with configuration file '%s': %s",
+                filename, error->message);
+            g_error_free (error);
+            continue;
+        }
+
+        keys = g_key_file_get_keys (keyfile, plugin_name, NULL, NULL);
+        if (!keys) {
+            N_WARNING (LOG_CAT "no group '%s' within configuration file '%s'",
+                plugin_name, filename);
+            continue;
+        }
+
+        for (iter = keys; *iter; ++iter) {
+            if ((value = g_key_file_get_string (keyfile, plugin_name, *iter, NULL)) == NULL)
+                continue;
+
+            N_DEBUG (LOG_CAT "+ plugin parameter (%s): %s = %s%s",
+                plugin_name, *iter, value,
+                n_proplist_has_key (proplist, *iter) ? " (override previous)" : "");
+            n_proplist_set_string (proplist, *iter, value);
+            g_free (value);
+        }
+
+        g_strfreev (keys);
+        g_key_file_remove_group (keyfile, plugin_name, NULL);
     }
 
-    g_strfreev (keys);
-
-done:
-    if (error)
-        g_error_free (error);
-
-    if (keyfile)
-        g_key_file_free (keyfile);
-
-    g_free          (full_path);
-    g_free          (filename);
+    g_key_file_free (keyfile);
+    /* Only remove the list, not the element data. */
+    g_slist_free (plugin_conf);
 
     return proplist;
 }
@@ -345,6 +414,9 @@ n_core_initialize (NCore *core)
         if (!plugin)
             N_INFO (LOG_CAT "optional plugin %s not loaded.", p->data);
     }
+
+    /* Clear temporary conf file list. */
+    n_core_plugin_conf_files_done ();
 
     /* setup the sink priorities based on the sink-order */
 
