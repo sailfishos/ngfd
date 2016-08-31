@@ -66,7 +66,8 @@ n_haptic_can_handle (NSinkInterface *iface, NRequest *request)
     }
 
     if (haptic_type == NULL) {
-        N_DEBUG (LOG_CAT "Haptic type not defined for %s", event_name);
+        N_DEBUG (LOG_CAT "No, haptic type not defined.");
+        return FALSE;
     }
 
     if (!enabled || !n_value_get_bool (enabled)) {
