@@ -34,7 +34,7 @@
  * The haptic.type key tells what kind of haptic event this is
  *
  * Each bracketed event definition in events.d config files that needs
- * haptic/vibra playback should contain "haptic.type" line to define what kind
+ * haptic/vibra playback has to contain "haptic.type" line to define what kind
  * of haptic event it is.
  *
  * Supported type strings are currently:
