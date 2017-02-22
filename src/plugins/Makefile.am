@@ -36,3 +36,7 @@ endif
 if BUILD_CANBERRA
 SUBDIRS += canberra
 endif
+
+if BUILD_DEVICELOCK
+SUBDIRS += devicelock
+endif
