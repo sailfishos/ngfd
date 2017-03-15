@@ -122,6 +122,7 @@ fi
 %{_libdir}/ngf/libngfd_callstate.so
 %{_libdir}/ngf/libngfd_profile.so
 %{_libdir}/ngf/libngfd_ffmemless.so
+%{_libdir}/ngf/libngfd_devicelock.so
 %{_libdir}/systemd/user/ngfd.service
 %{_libdir}/systemd/user/user-session.target.wants/ngfd.service
 %{_libdir}/systemd/user/actdead-session.target.wants/ngfd.service

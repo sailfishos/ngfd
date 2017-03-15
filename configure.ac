@@ -208,6 +208,16 @@ fi
 
 AM_CONDITIONAL(BUILD_TONEGEN, test x$enable_tonegen = xyes)
 
+# Device lock plugin needs DBus
+
+if test x$enable_dbus = xyes ; then
+    enable_devicelock=yes
+else
+    enable_devicelock=no
+fi
+
+AM_CONDITIONAL(BUILD_DEVICELOCK, test x$enable_devicelock = xyes)
+
 echo "
  == $PACKAGE_NAME $VERSION ==
 
@@ -217,6 +227,7 @@ echo "
     Debug enabled:          ${debug}
 
     DBus plugin:            ${enable_dbus}
+    Device lock plugin:     ${enable_devicelock}
     GStreamer plugin:       ${enable_gst}
     Canberra plugin:        ${enable_canberra}
     Immvibe plugin:         ${enable_immvibe}
@@ -246,6 +257,7 @@ src/plugins/tonegen/Makefile
 src/plugins/gst/Makefile
 src/plugins/canberra/Makefile
 src/plugins/callstate/Makefile
+src/plugins/devicelock/Makefile
 doc/Makefile
 data/Makefile
 data/events.d/Makefile
