@@ -50,9 +50,7 @@ device_lock_state_to_string (int state)
     case 2:
         return "manager_lockout";
     case 3:
-        return "temporary_lockout";
-    case 4:
-        return "permanent_lockout";
+        return "code_entry_lockout";
     default:
         return "undefined";
     }
