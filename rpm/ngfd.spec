@@ -25,6 +25,7 @@ BuildRequires:  pkgconfig(check)
 BuildRequires:  pkgconfig(mce)
 BuildRequires:  pkgconfig(profile)
 BuildRequires:  pkgconfig(libcanberra)
+BuildRequires:  libtool
 BuildRequires:  doxygen
 Obsoletes:      tone-generator <= 1.5.4
 Provides:       tone-generator > 1.5.4
