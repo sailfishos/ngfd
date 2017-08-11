@@ -44,11 +44,21 @@
  * The haptic event type is used to filter out playback in case user has
  * disabled the setting for certain type of haptic feedback.
  */
-#define HAPTIC_TYPE_KEY	"haptic.type"
+#define HAPTIC_TYPE_KEY         "haptic.type"
 
 /* Convenience macros for supported haptic types */
-#define HAPTIC_TYPE_ALARM	"alarm"
-#define HAPTIC_TYPE_TOUCH	"touch"
+#define HAPTIC_TYPE_TOUCH       "touch"
+#define HAPTIC_TYPE_SHORT       "short"
+#define HAPTIC_TYPE_STRONG      "strong"
+#define HAPTIC_TYPE_ALARM       "alarm"
+#define HAPTIC_TYPE_NOTICE      "notice"
+#define HAPTIC_TYPE_MESSAGE     "message"
+#define HAPTIC_TYPE_RINGTONE    "ringtone"
+
+/* Supported haptic classes */
+#define HAPTIC_CLASS_UNDEFINED  (0)
+#define HAPTIC_CLASS_TOUCH      (1)
+#define HAPTIC_CLASS_ALARM      (2)
 
 /**
  * Convenience function to filter haptic depending on settings and call state
@@ -67,5 +77,15 @@
  * @return FALSE if the plugin should not handle this event, TRUE otherwise
  */
 int n_haptic_can_handle (NSinkInterface *iface, NRequest *request);
+
+/* Each haptic type belongs to a haptic class.
+ *
+ * Based on the haptic class the haptic event may be filtered away
+ * depending on the currently active settings.
+ *
+ * @param haptic_type Haptic type string
+ * @return Haptic class, or HAPTIC_CLASS_UNDEFINED if type doesn't have a class
+ */
+int n_haptic_class_for_type (const char *haptic_type);
 
 #endif /* N_NGF_HAPTIC_H */
