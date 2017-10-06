@@ -58,6 +58,10 @@ N_PLUGIN_DESCRIPTION ("D-Bus interface")
 
 #define RINGTONE_STOP_TIMEOUT 200
 
+#define DBUS_REQUEST_LIMIT    (8)
+
+#define N_DBUS_EVENT_FAILED   (0)
+
 static gboolean          msg_parse_variant       (DBusMessageIter *iter,
                                                   NProplist *proplist,
                                                   const char *key);
@@ -200,14 +204,17 @@ dbusif_ack (DBusConnection *connection, DBusMessage *msg, uint32_t event_id)
 }
 
 static void
-dbusif_reply_error (DBusConnection *connection, DBusMessage *msg, const char *error_message)
+dbusif_reply_error (DBusConnection *connection, DBusMessage *msg,
+                    const char *error_name, const char *error_message)
 {
     DBusMessage *reply = NULL;
-    const char *error;
+    const char *dbus_error_name;
+    const char *dbus_error_msg;
 
-    error = error_message ? error_message : "Unknown error.";
-    N_DEBUG (LOG_CAT "reply error: %s", error);
-    reply = dbus_message_new_error (msg, DBUS_ERROR_FAILED, error);
+    dbus_error_name = error_name ?: DBUS_ERROR_FAILED;
+    dbus_error_msg = error_message ?: "Unknown error.";
+    N_DEBUG (LOG_CAT "reply error: %s (%s)", dbus_error_name, dbus_error_msg);
+    reply = dbus_message_new_error (msg, dbus_error_name, dbus_error_msg);
     if (reply) {
         dbus_connection_send (connection, reply, NULL);
         dbus_message_unref (reply);
@@ -218,12 +225,20 @@ static DBusHandlerResult
 dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
                      NInputInterface *iface, uint32_t event_id)
 {
+    NCore           *core       = NULL;
+    GList           *requests   = NULL;
     const char      *event      = NULL;
     NProplist       *properties = NULL;
     NRequest        *request    = NULL;
     DBusMessageIter  iter;
     const char      *sender     = NULL;
     GSList          *search     = NULL;
+
+
+    core = n_input_interface_get_core (iface);
+    requests = n_core_get_requests (core);
+    if (requests && g_list_length (requests) > DBUS_REQUEST_LIMIT)
+        goto limits;
 
     dbus_message_iter_init (msg, &iter);
     if (dbus_message_iter_get_arg_type (&iter) != DBUS_TYPE_STRING)
@@ -259,8 +274,12 @@ dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
 
     return DBUS_HANDLER_RESULT_HANDLED;
 
+limits:
+    dbusif_reply_error (connection, msg, DBUS_ERROR_LIMITS_EXCEEDED, "Too many simultaneous requests.");
+    return DBUS_HANDLER_RESULT_HANDLED;
+
 fail:
-    dbusif_reply_error (connection, msg, "Malformed method call.");
+    dbusif_reply_error (connection, msg, DBUS_ERROR_INVALID_ARGS, "Malformed method call.");
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
@@ -389,7 +408,7 @@ dbusif_stop_handler (DBusConnection *connection, DBusMessage *msg,
     return DBUS_HANDLER_RESULT_HANDLED;
 
 fail:
-    dbusif_reply_error (connection, msg, error);
+    dbusif_reply_error (connection, msg, DBUS_ERROR_INVALID_ARGS, error);
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
@@ -433,7 +452,7 @@ dbusif_pause_handler (DBusConnection *connection, DBusMessage *msg,
     return DBUS_HANDLER_RESULT_HANDLED;
 
 fail:
-    dbusif_reply_error (connection, msg, error);
+    dbusif_reply_error (connection, msg, DBUS_ERROR_INVALID_ARGS, error);
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
@@ -604,7 +623,7 @@ dbusif_send_error (NInputInterface *iface, NRequest *request,
     N_DEBUG (LOG_CAT "error occurred for request '%s': %s",
         n_request_get_name (request), err_msg);
 
-    dbusif_send_reply (iface, request, 0);
+    dbusif_send_reply (iface, request, N_DBUS_EVENT_FAILED);
 }
 
 static void
@@ -613,7 +632,7 @@ dbusif_send_reply (NInputInterface *iface, NRequest *request, int code)
     DBusMessage     *msg   = NULL;
     const NProplist *props = NULL;
     guint            event_id = 0;
-    guint            status = 0;
+    guint            status = N_DBUS_EVENT_FAILED;
 
     (void) iface;
 
