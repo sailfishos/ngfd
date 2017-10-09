@@ -92,8 +92,6 @@ typedef struct _DBusInterfaceData
     GSList *clients; // Internal cache of all clients currently connected
 } DBusInterfaceData;
 
-static DBusInterfaceData *g_data = NULL;
-
 static gboolean
 msg_parse_variant (DBusMessageIter *iter, NProplist *proplist, const char *key)
 {
@@ -225,16 +223,17 @@ static DBusHandlerResult
 dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
                      NInputInterface *iface, uint32_t event_id)
 {
-    NCore           *core       = NULL;
-    GList           *requests   = NULL;
-    const char      *event      = NULL;
-    NProplist       *properties = NULL;
-    NRequest        *request    = NULL;
-    DBusMessageIter  iter;
-    const char      *sender     = NULL;
-    GSList          *search     = NULL;
+    DBusInterfaceData   *idata      = NULL;
+    NCore               *core       = NULL;
+    GList               *requests   = NULL;
+    const char          *event      = NULL;
+    NProplist           *properties = NULL;
+    NRequest            *request    = NULL;
+    DBusMessageIter      iter;
+    const char          *sender     = NULL;
+    GSList              *search     = NULL;
 
-
+    idata = n_input_interface_get_userdata (iface);
     core = n_input_interface_get_core (iface);
     requests = n_core_get_requests (core);
     if (requests && g_list_length (requests) > DBUS_REQUEST_LIMIT)
@@ -256,12 +255,12 @@ dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
 
     N_INFO (LOG_CAT ">> play received for event '%s' with id '%u' (client %s)", event, event_id, sender);
 
-    for (search = g_data->clients; search; search = g_slist_next(search)) {
+    for (search = idata->clients; search; search = g_slist_next(search)) {
         if (g_str_equal (sender, (const char*)search->data))
             break;
     }
     if (!search)
-        g_data->clients = g_slist_append (g_data->clients, g_strdup (sender));
+        idata->clients = g_slist_append (idata->clients, g_strdup (sender));
 
     // Reply internal event_id immediately
     dbusif_ack (connection, msg, event_id);
@@ -335,9 +334,9 @@ dbusif_stop_all (NInputInterface *iface)
 }
 
 static void
-dbusif_stop_by_name (NInputInterface *iface, const char *client_name)
+dbusif_stop_by_name (DBusInterfaceData *idata, const char *client_name)
 {
-    g_assert (iface != NULL);
+    g_assert (idata != NULL);
     g_assert (client_name);
 
     NCore     *core            = NULL;
@@ -347,7 +346,7 @@ dbusif_stop_by_name (NInputInterface *iface, const char *client_name)
     const gchar *match_name    = NULL;
     NProplist *properties      = NULL;
 
-    core = n_input_interface_get_core (iface);
+    core = n_input_interface_get_core (idata->iface);
     active_requests = n_core_get_requests (core);
 
     for (iter = g_list_first (active_requests); iter; iter = g_list_next (iter)) {
@@ -359,7 +358,7 @@ dbusif_stop_by_name (NInputInterface *iface, const char *client_name)
 
         match_name = n_proplist_get_string (properties, NGF_DBUS_PROPERTY_NAME);
         if (match_name && g_str_equal (match_name, client_name))
-            n_input_interface_stop_request (iface, request, 0);
+            n_input_interface_stop_request (idata->iface, request, 0);
     }
 }
 
@@ -459,23 +458,26 @@ fail:
 static void
 dbusif_disconnect_handler (NInputInterface *iface, const gchar *client)
 {
-    GSList          *search    = NULL;
+    DBusInterfaceData *idata    = NULL;
+    GSList            *search   = NULL;
 
     g_assert (iface);
     g_assert (client);
 
-    for (search = g_data->clients; search; search = g_slist_next(search)) {
+    idata = n_input_interface_get_userdata (iface);
+
+    for (search = idata->clients; search; search = g_slist_next(search)) {
         if (g_str_equal (client, (const gchar*)search->data))
             break;
     }
 
     if (search) {
-        g_data->clients = g_slist_remove_link (g_data->clients, search);
+        idata->clients = g_slist_remove_link (idata->clients, search);
         g_free (search->data);
         g_slist_free (search);
 
         N_INFO (LOG_CAT ">> client disconnect (%s)", client);
-        dbusif_stop_by_name (iface, client);
+        dbusif_stop_by_name (idata, client);
     }
 }
 
@@ -502,11 +504,14 @@ dbusif_message_function (DBusConnection *connection, DBusMessage *msg,
                          void *userdata)
 {
     NInputInterface *iface  = (NInputInterface*) userdata;
+    DBusInterfaceData *idata = NULL;
     const char      *member = dbus_message_get_member (msg);
     DBusError error = DBUS_ERROR_INIT;
     gchar *component = NULL;
     gchar *s1 = NULL;
     gchar *s2 = NULL;
+
+    idata = n_input_interface_get_userdata (iface);
 
     if (dbus_message_is_signal (msg, "org.freedesktop.DBus", "NameOwnerChanged")) {
         if (!dbus_message_get_args
@@ -543,7 +548,7 @@ dbusif_message_function (DBusConnection *connection, DBusMessage *msg,
         return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
     if (g_str_equal (member, NGF_DBUS_METHOD_PLAY))
-        return dbusif_play_handler (connection, msg, iface, ++g_data->event_id);
+        return dbusif_play_handler (connection, msg, iface, ++idata->event_id);
 
     else if (g_str_equal (member, NGF_DBUS_METHOD_STOP))
         return dbusif_stop_handler (connection, msg, iface);
@@ -561,59 +566,60 @@ dbusif_initialize (NInputInterface *iface)
         .message_function = dbusif_message_function
     };
 
+    DBusInterfaceData *idata;
     DBusError error;
     int       ret;
 
-    g_data = g_new0 (DBusInterfaceData, 1);
-    g_data->iface = iface;
+    idata = g_new0 (DBusInterfaceData, 1);
+    idata->iface = iface;
+    n_input_interface_set_userdata (iface, idata);
 
     dbus_error_init (&error);
-    g_data->connection = dbus_bus_get (DBUS_BUS_SYSTEM, &error);
-    if (!g_data->connection) {
+    idata->connection = dbus_bus_get (DBUS_BUS_SYSTEM, &error);
+    if (!idata->connection) {
         N_ERROR (LOG_CAT "failed to get system bus: %s", error.message);
-        dbus_error_free (&error);
-        return FALSE;
+        goto error;
     }
 
-    dbus_connection_setup_with_g_main (g_data->connection, NULL);
+    dbus_connection_setup_with_g_main (idata->connection, NULL);
 
-    ret = dbus_bus_request_name (g_data->connection, NGF_DBUS_NAME,
+    ret = dbus_bus_request_name (idata->connection, NGF_DBUS_NAME,
         DBUS_NAME_FLAG_REPLACE_EXISTING, &error);
 
     if (ret != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER) {
-        if (dbus_error_is_set (&error)) {
+        if (dbus_error_is_set (&error))
             N_ERROR (LOG_CAT "failed to get unique name: %s", error.message);
-            dbus_error_free (&error);
-        }
-
-        return FALSE;
+        goto error;
     }
 
-    if (!dbus_connection_register_object_path (g_data->connection,
+    if (!dbus_connection_register_object_path (idata->connection,
         NGF_DBUS_PATH, &method, iface))
-        return FALSE;
+        goto error;
 
     /* Monitor for ohmd restarts and disconnecting clients*/
-    dbus_bus_add_match (g_data->connection, DBUS_CLIENT_MATCH, NULL);
-    dbus_connection_add_filter (g_data->connection, dbusif_message_function, iface, NULL);
+    dbus_bus_add_match (idata->connection, DBUS_CLIENT_MATCH, NULL);
+    dbus_connection_add_filter (idata->connection, dbusif_message_function, iface, NULL);
 
     return TRUE;
+
+error:
+    g_free (idata);
+    if (dbus_error_is_set (&error))
+        dbus_error_free (&error);
+    return FALSE;
 }
 
 static void
 dbusif_shutdown (NInputInterface *iface)
 {
-    (void) iface;
+    DBusInterfaceData *idata;
 
-    if (g_data->connection) {
-        dbus_connection_unref (g_data->connection);
-        g_data->connection = NULL;
-    }
+    idata = n_input_interface_get_userdata (iface);
 
-    if (g_data) {
-        g_free (g_data);
-        g_data = NULL;
-    }
+    if (idata && idata->connection)
+        dbus_connection_unref (idata->connection);
+
+    g_free (idata);
 }
 
 static void
@@ -629,12 +635,13 @@ dbusif_send_error (NInputInterface *iface, NRequest *request,
 static void
 dbusif_send_reply (NInputInterface *iface, NRequest *request, int code)
 {
-    DBusMessage     *msg   = NULL;
-    const NProplist *props = NULL;
-    guint            event_id = 0;
-    guint            status = N_DBUS_EVENT_FAILED;
+    DBusInterfaceData   *idata   = NULL;
+    DBusMessage         *msg     = NULL;
+    const NProplist     *props   = NULL;
+    guint               event_id = 0;
+    guint               status   = N_DBUS_EVENT_FAILED;
 
-    (void) iface;
+    idata = n_input_interface_get_userdata (iface);
 
     props  = n_request_get_properties (request);
     event_id = n_proplist_get_uint ((NProplist*) props, NGF_DBUS_PROPERTY_ID);
@@ -658,7 +665,7 @@ dbusif_send_reply (NInputInterface *iface, NRequest *request, int code)
         DBUS_TYPE_UINT32, &status,
         DBUS_TYPE_INVALID);
 
-    dbus_connection_send (g_data->connection, msg, NULL);
+    dbus_connection_send (idata->connection, msg, NULL);
     dbus_message_unref (msg);
 }
 
