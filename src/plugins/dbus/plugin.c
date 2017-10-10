@@ -61,13 +61,16 @@ N_PLUGIN_DESCRIPTION ("D-Bus interface")
 #define RINGTONE_STOP_TIMEOUT 200
 
 #define DBUSIF_REQUEST_LIMIT    "request_limit"
+#define DBUSIF_CLIENT_LIMIT     "client_limit"
 #define DEFAULT_REQUEST_LIMIT   (16)
+#define DEFAULT_CLIENT_LIMIT    (64)
 
 /* from ngf/core-player.h */
 #define N_DBUS_EVENT_FAILED     (0)
 #define N_DBUS_EVENT_COMPLETED  (1)
 
 static uint32_t          dbusif_max_requests;
+static uint32_t          dbusif_max_clients;
 
 static gboolean          msg_parse_variant       (DBusMessageIter *iter,
                                                   NProplist *proplist,
@@ -97,6 +100,7 @@ typedef struct _DBusInterfaceData
     NInputInterface *iface;
     uint32_t event_id;
     GSList *clients; // Internal cache of all clients currently connected
+    uint32_t client_count;
 } DBusInterfaceData;
 
 typedef struct _DBusInterfaceClient
@@ -304,9 +308,10 @@ client_list_remove (DBusInterfaceData *idata, DBusInterfaceClient *client)
 {
     GSList *search;
 
-    if ((search = g_slist_find (idata->clients, client)))
+    if ((search = g_slist_find (idata->clients, client))) {
         idata->clients = g_slist_remove_link (idata->clients, search);
-    else
+        idata->client_count--;
+    } else
         N_ERROR (LOG_CAT "cannot find client %s from client list.", client->name);
 }
 
@@ -314,6 +319,7 @@ static void
 client_list_add (DBusInterfaceData *idata, DBusInterfaceClient *client)
 {
     idata->clients = g_slist_append (idata->clients, client);
+    idata->client_count++;
 }
 
 static DBusHandlerResult
@@ -335,6 +341,8 @@ dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
         goto fail;
 
     if (!(client = client_list_find(idata, sender))) {
+        if (idata->client_count >= dbusif_max_clients)
+            goto client_limits;
         client = client_new (sender);
         client_list_add (idata, client);
     } else if (client->active_requests >= dbusif_max_requests)
@@ -365,6 +373,10 @@ dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
     n_input_interface_play_request (iface, request);
     n_proplist_free (properties);
 
+    return DBUS_HANDLER_RESULT_HANDLED;
+
+client_limits:
+    dbusif_reply_error (connection, msg, DBUS_ERROR_LIMITS_EXCEEDED, "Too many simultaneous clients.");
     return DBUS_HANDLER_RESULT_HANDLED;
 
 limits:
@@ -530,8 +542,9 @@ dbusif_debug_handler (DBusConnection *connection, DBusMessage *msg,
         total_clients++;
     }
 
-    N_INFO (LOG_CAT "total clients %u, per-client max requests %u , active requests %u",
-                    total_clients, dbusif_max_requests, total_requests);
+    N_INFO (LOG_CAT "total clients %u/%u, per-client max requests %u , active requests %u",
+                    total_clients, dbusif_max_clients,
+                    dbusif_max_requests, total_requests);
     N_INFO (LOG_CAT "====================");
 
     if (!dbus_message_get_no_reply (msg)) {
@@ -825,6 +838,11 @@ n_plugin__load (NPlugin *plugin)
         dbusif_max_requests = n_proplist_get_uint (props, DBUSIF_REQUEST_LIMIT);
     else
         dbusif_max_requests = DEFAULT_REQUEST_LIMIT;
+
+    if (n_proplist_has_key (props, DBUSIF_CLIENT_LIMIT))
+        dbusif_max_clients = n_proplist_get_uint (props, DBUSIF_CLIENT_LIMIT);
+    else
+        dbusif_max_clients = DEFAULT_CLIENT_LIMIT;
 
     /* register the DBus interface as the NInputInterface */
     n_plugin_register_input (plugin, &iface);
