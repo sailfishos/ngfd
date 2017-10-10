@@ -4,7 +4,8 @@ Requires=dbus.socket
 After=pre-user-session.target
 
 [Service]
-ExecStart=/usr/bin/ngfd
+EnvironmentFile=-/etc/sysconfig/ngfd
+ExecStart=/usr/bin/ngfd $NGFD_ARGS
 Restart=always
 
 [Install]
