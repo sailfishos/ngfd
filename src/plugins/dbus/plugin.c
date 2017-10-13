@@ -333,6 +333,7 @@ dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
     DBusMessageIter      iter;
     const char          *sender     = NULL;
     DBusInterfaceClient *client     = NULL;
+    const char          *error      = NULL;
 
     idata = n_input_interface_get_userdata (iface);
 
@@ -341,12 +342,16 @@ dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
         goto fail;
 
     if (!(client = client_list_find(idata, sender))) {
-        if (idata->client_count >= dbusif_max_clients)
-            goto client_limits;
+        if (idata->client_count >= dbusif_max_clients) {
+            error = "Too many simultaneous clients.";
+            goto limits;
+        }
         client = client_new (sender);
         client_list_add (idata, client);
-    } else if (client->active_requests >= dbusif_max_requests)
+    } else if (client->active_requests >= dbusif_max_requests) {
+        error = "Too many simultaneous requests.";
         goto limits;
+    }
 
     dbus_message_iter_init (msg, &iter);
     if (dbus_message_iter_get_arg_type (&iter) != DBUS_TYPE_STRING)
@@ -375,12 +380,8 @@ dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
 
     return DBUS_HANDLER_RESULT_HANDLED;
 
-client_limits:
-    dbusif_reply_error (connection, msg, DBUS_ERROR_LIMITS_EXCEEDED, "Too many simultaneous clients.");
-    return DBUS_HANDLER_RESULT_HANDLED;
-
 limits:
-    dbusif_reply_error (connection, msg, DBUS_ERROR_LIMITS_EXCEEDED, "Too many simultaneous requests.");
+    dbusif_reply_error (connection, msg, DBUS_ERROR_LIMITS_EXCEEDED, error);
     return DBUS_HANDLER_RESULT_HANDLED;
 
 fail:
@@ -472,17 +473,31 @@ static DBusHandlerResult
 dbusif_stop_handler (DBusConnection *connection, DBusMessage *msg,
                      NInputInterface *iface)
 {
-    dbus_uint32_t    event_id  = 0;
-    NRequest        *request   = NULL;
     const char      *name      = NULL;
-    const char      *error     = NULL;
+    DBusInterfaceData   *idata      = NULL;
+    dbus_uint32_t        event_id   = 0;
+    NRequest            *request    = NULL;
+    const char          *sender     = NULL;
+    const char          *error      = NULL;
+
+    idata = n_input_interface_get_userdata (iface);
+
+    if ((sender = dbus_message_get_sender (msg)) == NULL) {
+        error = "Unknown sender.";
+        goto access;
+    }
+
+    if (!client_list_find(idata, sender)) {
+        error = "Unknown client.";
+        goto access;
+    }
 
     if (!dbus_message_get_args (msg, NULL,
                                 DBUS_TYPE_UINT32, &event_id,
                                 DBUS_TYPE_INVALID))
     {
         error = "Malformed method call.";
-        goto fail;
+        goto args;
     }
 
     N_INFO (LOG_CAT ">> stop received for id '%u'", event_id);
@@ -491,7 +506,7 @@ dbusif_stop_handler (DBusConnection *connection, DBusMessage *msg,
 
     if (!request) {
         error = "No event with given id found.";
-        goto fail;
+        goto args;
     }
 
     name = n_request_get_name (request);
@@ -512,7 +527,10 @@ dbusif_stop_handler (DBusConnection *connection, DBusMessage *msg,
 
     return DBUS_HANDLER_RESULT_HANDLED;
 
-fail:
+access:
+    dbusif_reply_error (connection, msg, DBUS_ERROR_ACCESS_DENIED, error);
+
+args:
     dbusif_reply_error (connection, msg, DBUS_ERROR_INVALID_ARGS, error);
     return DBUS_HANDLER_RESULT_HANDLED;
 }
@@ -562,12 +580,24 @@ static DBusHandlerResult
 dbusif_pause_handler (DBusConnection *connection, DBusMessage *msg,
                       NInputInterface *iface)
 {
-    dbus_uint32_t    event_id  = 0;
-    dbus_bool_t      pause     = FALSE;
-    NRequest        *request   = NULL;
-    const char      *error     = NULL;
+    DBusInterfaceData  *idata       = NULL;
+    const char         *sender      = NULL;
+    dbus_uint32_t       event_id    = 0;
+    dbus_bool_t         pause       = FALSE;
+    NRequest           *request     = NULL;
+    const char         *error       = NULL;
 
-    (void) iface;
+    idata = n_input_interface_get_userdata (iface);
+
+    if ((sender = dbus_message_get_sender (msg)) == NULL) {
+        error = "Unknown sender.";
+        goto access;
+    }
+
+    if (!client_list_find(idata, sender)) {
+        error = "Unknown client.";
+        goto access;
+    }
 
     if (!dbus_message_get_args (msg, NULL,
                                 DBUS_TYPE_UINT32, &event_id,
@@ -575,7 +605,7 @@ dbusif_pause_handler (DBusConnection *connection, DBusMessage *msg,
                                 DBUS_TYPE_INVALID))
     {
         error = "Malformed method call.";
-        goto fail;
+        goto args;
     }
 
     N_INFO (LOG_CAT ">> %s received for id '%u'", pause ? "pause" : "resume",
@@ -585,7 +615,7 @@ dbusif_pause_handler (DBusConnection *connection, DBusMessage *msg,
 
     if (!request) {
         error = "No event with given id found.";
-        goto fail;
+        goto args;
     }
 
     if (pause)
@@ -597,7 +627,11 @@ dbusif_pause_handler (DBusConnection *connection, DBusMessage *msg,
 
     return DBUS_HANDLER_RESULT_HANDLED;
 
-fail:
+access:
+    dbusif_reply_error (connection, msg, DBUS_ERROR_ACCESS_DENIED, error);
+    return DBUS_HANDLER_RESULT_HANDLED;
+
+args:
     dbusif_reply_error (connection, msg, DBUS_ERROR_INVALID_ARGS, error);
     return DBUS_HANDLER_RESULT_HANDLED;
 }
