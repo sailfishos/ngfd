@@ -39,6 +39,8 @@
 #define PLUGIN_CONF_PATH      "plugins.d"
 #define EVENT_CONF_PATH       "events.d"
 
+#define CORE_CONF_KEYTYPES    "keytypes"
+
 typedef struct _NEventMatchResult
 {
     NRequest *request;
@@ -190,6 +192,9 @@ n_core_load_params (NCore *core, const char *plugin_name)
             continue;
         }
 
+        /* Extend known keytypes from plugin configuration. */
+        n_core_parse_keytypes (core, keyfile);
+
         for (iter = keys; *iter; ++iter) {
             if ((value = g_key_file_get_string (keyfile, plugin_name, *iter, NULL)) == NULL)
                 continue;
@@ -203,6 +208,7 @@ n_core_load_params (NCore *core, const char *plugin_name)
 
         g_strfreev (keys);
         g_key_file_remove_group (keyfile, plugin_name, NULL);
+        g_key_file_remove_group (keyfile, CORE_CONF_KEYTYPES, NULL);
     }
 
     g_key_file_free (keyfile);
@@ -410,11 +416,6 @@ n_core_initialize (NCore *core)
         goto failed_init;
     }
 
-    /* load events from the given event path. */
-
-    if (!n_core_parse_events (core))
-        goto failed_init;
-
     /* load all plugins */
 
     /* first mandatory plugins */
@@ -436,6 +437,11 @@ n_core_initialize (NCore *core)
 
     /* Clear temporary conf file list. */
     n_core_plugin_conf_files_done ();
+
+    /* load events from the given event path. */
+
+    if (!n_core_parse_events (core))
+        goto failed_init;
 
     /* initialize required plugins */
     for (p = required_plugins; p; p = g_list_next (p)) {
@@ -754,12 +760,12 @@ n_core_parse_keytypes (NCore *core, GKeyFile *keyfile)
 
     /* load all the event configuration key entries. */
 
-    conf_keys = g_key_file_get_keys (keyfile, "keytypes", NULL, NULL);
+    conf_keys = g_key_file_get_keys (keyfile, CORE_CONF_KEYTYPES, NULL, NULL);
     if (!conf_keys)
         return;
 
     for (key = conf_keys; *key; ++key) {
-        value = g_key_file_get_string (keyfile, "keytypes", *key, NULL);
+        value = g_key_file_get_string (keyfile, CORE_CONF_KEYTYPES, *key, NULL);
         if (!value) {
             N_WARNING (LOG_CAT "no datatype defined for key '%s'", *key);
             continue;
