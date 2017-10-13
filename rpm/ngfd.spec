@@ -25,6 +25,7 @@ BuildRequires:  pkgconfig(check)
 BuildRequires:  pkgconfig(mce)
 BuildRequires:  pkgconfig(profile)
 BuildRequires:  pkgconfig(libcanberra)
+BuildRequires:  pkgconfig(ohm-ext-route)
 BuildRequires:  libtool
 BuildRequires:  doxygen
 Obsoletes:      tone-generator <= 1.5.4
@@ -124,6 +125,7 @@ fi
 %{_libdir}/ngf/libngfd_profile.so
 %{_libdir}/ngf/libngfd_ffmemless.so
 %{_libdir}/ngf/libngfd_devicelock.so
+%{_libdir}/ngf/libngfd_route.so
 %{_libdir}/systemd/user/ngfd.service
 %{_libdir}/systemd/user/user-session.target.wants/ngfd.service
 %{_libdir}/systemd/user/actdead-session.target.wants/ngfd.service
