@@ -74,10 +74,8 @@ int ffmemless_evdev_file_open(const char *file_name)
 
 	fp = open(file_name, O_RDWR | O_CLOEXEC);
 
-	if (fp == -1) {
-		perror("test file open");
+	if (fp == -1)
 		return fp;
-	}
 
 	/* Query device */
 	if (ioctl(fp, EVIOCGBIT(EV_FF, sizeof(unsigned long) * 4),
@@ -108,10 +106,8 @@ int ffmemless_evdev_file_search(void)
 	while (fp && i < 256) {
 		sprintf(device_file_name, "/dev/input/event%d", i);
 		fp = open(device_file_name, O_RDWR | O_CLOEXEC);
-		if (fp == -1) {
-			perror("test file open");
+		if (fp == -1)
 			break;
-		}
 
 		/* Query device */
 		if (ioctl(fp, EVIOCGBIT(EV_FF, sizeof(unsigned long) * 4),
