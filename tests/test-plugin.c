@@ -164,10 +164,10 @@ START_TEST (test_load_plugin)
 
     NPlugin *loaded_plugin = NULL;
     /* try to load not existing plugin file */
-    loaded_plugin = n_plugin_load ("./not_existing_plugin.la");
+    loaded_plugin = n_plugin_open ("./not_existing_plugin.la");
     fail_unless (loaded_plugin == NULL);
     /* load dummyu plugin file - valid one*/
-    loaded_plugin = n_plugin_load (plugin_path);
+    loaded_plugin = n_plugin_open (plugin_path);
     fail_unless (loaded_plugin != NULL);
     fail_unless (loaded_plugin->module != NULL);
     loaded_plugin->core = core;

@@ -49,7 +49,8 @@ typedef struct _NEventMatchResult
 
 static gchar*     n_core_get_path               (const char *key, const char *default_path);
 static NProplist* n_core_load_params            (NCore *core, const char *plugin_name);
-static NPlugin*   n_core_load_plugin            (NCore *core, const char *plugin_name);
+static NPlugin*   n_core_open_plugin            (NCore *core, const char *plugin_name);
+static int        n_core_init_plugin            (NPlugin *plugin, gboolean required);
 static void       n_core_unload_plugin          (NCore *core, NPlugin *plugin);
 static void       n_core_free_event_list_cb     (gpointer in_key, gpointer in_data, gpointer userdata);
 static gint       n_core_sort_event_cb          (gconstpointer a, gconstpointer b);
@@ -212,7 +213,7 @@ n_core_load_params (NCore *core, const char *plugin_name)
 }
 
 static NPlugin*
-n_core_load_plugin (NCore *core, const char *plugin_name)
+n_core_open_plugin (NCore *core, const char *plugin_name)
 {
     g_assert (core != NULL);
     g_assert (plugin_name != NULL);
@@ -224,16 +225,13 @@ n_core_load_plugin (NCore *core, const char *plugin_name)
     filename  = g_strdup_printf ("libngfd_%s.so", plugin_name);
     full_path = g_build_filename (core->plugin_path, filename, NULL);
 
-    if (!(plugin = n_plugin_load (full_path)))
+    if (!(plugin = n_plugin_open (full_path)))
         goto done;
 
     plugin->core   = core;
     plugin->params = n_core_load_params (core, plugin_name);
 
-    if (!plugin->load (plugin))
-        goto done;
-
-    N_DEBUG (LOG_CAT "loaded plugin '%s'", plugin_name);
+    N_DEBUG (LOG_CAT "opened plugin '%s'", plugin_name);
 
     g_free (full_path);
     g_free (filename);
@@ -241,7 +239,7 @@ n_core_load_plugin (NCore *core, const char *plugin_name)
     return plugin;
 
 done:
-    N_ERROR (LOG_CAT "unable to load plugin '%s'", plugin_name);
+    N_ERROR (LOG_CAT "unable to open plugin '%s'", plugin_name);
 
     if (plugin)
         n_plugin_unload (plugin);
@@ -250,6 +248,25 @@ done:
     g_free (filename);
 
     return NULL;
+}
+
+static int
+n_core_init_plugin (NPlugin *plugin, gboolean required)
+{
+    int ret = FALSE;
+
+    g_assert (plugin != NULL);
+
+    if (!(ret = n_plugin_init (plugin))) {
+        if (required)
+            N_ERROR (LOG_CAT "unable to init required plugin '%s'", plugin->get_name());
+        else
+            N_INFO (LOG_CAT "unable to init optional plugin '%s'", plugin->get_name());
+
+        n_plugin_unload (plugin);
+    }
+
+    return ret;
 }
 
 static void
@@ -368,6 +385,8 @@ n_core_initialize (NCore *core)
     g_assert (core->conf_path != NULL);
     g_assert (core->plugin_path != NULL);
 
+    GList            *required_plugins = NULL;
+    GList            *optional_plugins = NULL;
     NSinkInterface  **sink   = NULL;
     NInputInterface **input  = NULL;
     NPlugin          *plugin = NULL;
@@ -400,23 +419,41 @@ n_core_initialize (NCore *core)
 
     /* first mandatory plugins */
     for (p = g_list_first (core->required_plugins); p; p = g_list_next (p)) {
-        if (!(plugin = n_core_load_plugin (core, (const char*) p->data)))
+        if (!(plugin = n_core_open_plugin (core, (const char*) p->data)))
             goto failed_init;
 
-        core->plugins = g_list_append (core->plugins, plugin);
+        required_plugins = g_list_append (required_plugins, plugin);
     }
 
     /* then optional plugins */
     for (p = g_list_first (core->optional_plugins); p; p = g_list_next (p)) {
-        if ((plugin = n_core_load_plugin (core, (const char*) p->data)))
-            core->plugins = g_list_append (core->plugins, plugin);
+        if ((plugin = n_core_open_plugin (core, (const char*) p->data)))
+            optional_plugins = g_list_append (optional_plugins, plugin);
 
         if (!plugin)
-            N_INFO (LOG_CAT "optional plugin %s not loaded.", p->data);
+            N_INFO (LOG_CAT "optional plugin %s not opened.", p->data);
     }
 
     /* Clear temporary conf file list. */
     n_core_plugin_conf_files_done ();
+
+    /* initialize required plugins */
+    for (p = required_plugins; p; p = g_list_next (p)) {
+        if (!n_core_init_plugin ((NPlugin *) p->data, TRUE))
+            goto failed_init;
+
+        core->plugins = g_list_append (core->plugins, p->data);
+    }
+
+    g_list_free (required_plugins);
+
+    /* initialize optional plugins */
+    for (p = optional_plugins; p; p = g_list_next (p)) {
+        if (n_core_init_plugin ((NPlugin *) p->data, FALSE))
+            core->plugins = g_list_append (core->plugins, p->data);
+    }
+
+    g_list_free (optional_plugins);
 
     /* setup the sink priorities based on the sink-order */
 
