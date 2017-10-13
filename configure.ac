@@ -188,13 +188,29 @@ fi
 
 AM_CONDITIONAL(BUILD_MCE, test x$enable_mce = xyes)
 
-# Stream restore plugin needs DBus
+PKG_CHECK_MODULES(ROUTE, ohm-ext-route >= 2, [has_route=yes], [has_route=no])
+AC_SUBST(ROUTE_CFLAGS)
+
+if test x$has_route = xyes; then
+    enable_route=yes
+else
+    enable_route=no
+fi
+
+AM_CONDITIONAL(BUILD_ROUTE, test x$enable_route = xyes)
+
+# Stream restore plugin needs DBus and Route
 
 if test x$enable_dbus = xyes ; then
     enable_streamrestore=yes
 else
     enable_streamrestore=no
 fi
+
+if test x$enable_route = xno ; then
+    enable_streamrestore=no
+fi
+
 
 AM_CONDITIONAL(BUILD_STREAMRESTORE, test x$enable_streamrestore = xyes)
 
@@ -235,6 +251,7 @@ echo "
     MCE plugin:             ${enable_mce}
     Stream restore plugin:  ${enable_streamrestore}
     Tone generator plugin:  ${enable_tonegen}
+    Route plugin:           ${enable_route}
 "
 
 AC_CONFIG_FILES([
@@ -258,6 +275,7 @@ src/plugins/gst/Makefile
 src/plugins/canberra/Makefile
 src/plugins/callstate/Makefile
 src/plugins/devicelock/Makefile
+src/plugins/route/Makefile
 doc/Makefile
 data/Makefile
 data/events.d/Makefile

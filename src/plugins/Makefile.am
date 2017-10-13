@@ -40,3 +40,7 @@ endif
 if BUILD_DEVICELOCK
 SUBDIRS += devicelock
 endif
+
+if BUILD_ROUTE
+SUBDIRS += route
+endif
