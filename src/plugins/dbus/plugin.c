@@ -58,8 +58,6 @@ N_PLUGIN_DESCRIPTION ("D-Bus interface")
 
 #define DBUS_MCE_NAME         "com.nokia.mce"
 
-#define RINGTONE_STOP_TIMEOUT 200
-
 #define DBUSIF_REQUEST_LIMIT    "request_limit"
 #define DBUSIF_CLIENT_LIMIT     "client_limit"
 #define DEFAULT_REQUEST_LIMIT   (16)
@@ -473,7 +471,6 @@ static DBusHandlerResult
 dbusif_stop_handler (DBusConnection *connection, DBusMessage *msg,
                      NInputInterface *iface)
 {
-    const char      *name      = NULL;
     DBusInterfaceData   *idata      = NULL;
     dbus_uint32_t        event_id   = 0;
     NRequest            *request    = NULL;
@@ -509,19 +506,7 @@ dbusif_stop_handler (DBusConnection *connection, DBusMessage *msg,
         goto args;
     }
 
-    name = n_request_get_name (request);
-    if (name && g_str_equal (name, "ringtone")) {
-        N_DEBUG (LOG_CAT "mute ringtone for delayed stop");
-        n_input_interface_pause_request (iface, request);
-
-        N_DEBUG (LOG_CAT "setup stop timeout for ringtone in %d ms",
-            RINGTONE_STOP_TIMEOUT);
-
-        n_input_interface_stop_request (iface, request, RINGTONE_STOP_TIMEOUT);
-    }
-    else {
-        n_input_interface_stop_request (iface, request, 0);
-    }
+    n_input_interface_stop_request (iface, request, 0);
 
     dbusif_ack (connection, msg, event_id);
 
