@@ -30,6 +30,7 @@
 #define ROLE_KEY_PREFIX "role."
 #define SET_KEY_PREFIX  "set."
 #define TRANSFORM_KEY_PREFIX  "transform."
+#define TRANSFORM_TO_CONTEXT_KEY_PREFIX  "transform-to-context."
 
 #define CLAMP_VALUE(in_v,in_min,in_max) \
     ((in_v) <= (in_min) ? (in_min) : ((in_v) >= (in_max) ? (in_max) : (in_v)))
@@ -53,6 +54,7 @@ typedef struct transform_entry {
     char *name;
     char *src;
     char *dst;
+    gboolean dst_is_context;
     int base;
     int max;
 } transform_entry;
@@ -74,6 +76,7 @@ typedef struct role_entry {
 static GHashTable *stream_restore_role_map = NULL; /* contains GSLists of role_entry structs */
 static GList      *transform_entries       = NULL; /* contains transform_entry entries */
 static guint       output_route_type_val   = 0;
+static NContext   *context                 = NULL;
 
 static const char*
 output_route_type_to_string ()
@@ -378,12 +381,19 @@ volume_changed_cb (const char *stream_name, int volume, transform_entry *entry, 
 
     new_volume = BASE_VOLUME(entry->base, entry->max, volume);
 
-    N_DEBUG (LOG_CAT "stream %s value changed to %d - set %s %d", stream_name, volume, entry->dst, new_volume);
-    (void) volume_controller_update (entry->dst, new_volume);
+    if (entry->dst_is_context) {
+        NValue *v = n_value_new ();
+        n_value_set_int (v, new_volume);
+        N_DEBUG (LOG_CAT "stream %s value changed to %d - set context %s %d", stream_name, volume, entry->dst, new_volume);
+        n_context_set_value (context, entry->dst, v);
+    } else {
+        N_DEBUG (LOG_CAT "stream %s value changed to %d - set %s %d", stream_name, volume, entry->dst, new_volume);
+        volume_controller_update (entry->dst, new_volume);
+    }
 }
 
 static void
-add_transform_entry (const char *name, const char *values)
+add_transform_entry (const char *name, const char *values, gboolean dst_is_context)
 {
     transform_entry *entry = NULL;
     gchar **split = NULL;
@@ -393,10 +403,12 @@ add_transform_entry (const char *name, const char *values)
     g_assert (name);
     g_assert (values);
 
-    N_DEBUG (LOG_CAT "add transform entry %s : %s", name, values);
+    N_DEBUG (LOG_CAT "add transform %sentry %s : %s",
+                     dst_is_context ? "to context " : "", name, values);
 
     entry = (transform_entry*) g_malloc0 (sizeof (transform_entry));
     entry->name = g_strdup (name);
+    entry->dst_is_context = dst_is_context;
 
     split = g_strsplit (values, ";", -1);
     for (iter = split; *iter; ++iter) {
@@ -474,7 +486,12 @@ volume_add_role_key_cb (const char *key, const NValue *value, gpointer userdata)
         new_key = (const char*) key + strlen (TRANSFORM_KEY_PREFIX);
 
         if (new_key)
-            add_transform_entry (new_key, n_value_get_string ((const NValue*) value));
+            add_transform_entry (new_key, n_value_get_string ((const NValue*) value), FALSE);
+    } else if (g_str_has_prefix (key, TRANSFORM_TO_CONTEXT_KEY_PREFIX)) {
+        new_key = (const char*) key + strlen (TRANSFORM_TO_CONTEXT_KEY_PREFIX);
+
+        if (new_key)
+            add_transform_entry (new_key, n_value_get_string ((const NValue*) value), TRUE);
     }
 }
 
@@ -526,7 +543,6 @@ entry_list_free (gpointer data)
 N_PLUGIN_LOAD (plugin)
 {
     NCore     *core    = NULL;
-    NContext  *context = NULL;
     NProplist *params  = NULL;
 
     stream_restore_role_map = g_hash_table_new_full (g_str_hash, g_str_equal,
