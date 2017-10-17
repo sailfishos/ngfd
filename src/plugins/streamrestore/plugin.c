@@ -23,6 +23,8 @@
 #include <stdlib.h>
 #include <ngf/plugin.h>
 #include "volume-controller.h"
+#include <ohm-ext/route.h>
+#include "../route/keys.h"
 
 #define LOG_CAT         "stream-restore: "
 #define ROLE_KEY_PREFIX "role."
@@ -48,6 +50,29 @@ typedef struct transform_entry {
 
 static GHashTable *stream_restore_role_map = NULL;
 static GList      *transform_entries       = NULL; /* contains transform_entry entries */
+static guint       output_route_type_val   = 0;
+
+static const char*
+output_route_type_to_string ()
+{
+    if (output_route_type_val & OHM_EXT_ROUTE_TYPE_BUILTIN)
+        return "builtin";
+    else if (output_route_type_val & (OHM_EXT_ROUTE_TYPE_WIRED | OHM_EXT_ROUTE_TYPE_WIRELESS))
+        return "external";
+
+    return "unknown";
+}
+
+static guint
+output_route_type ()
+{
+    if (output_route_type_val & OHM_EXT_ROUTE_TYPE_BUILTIN)
+        return TYPE_BUILTIN;
+    else if (output_route_type_val & (OHM_EXT_ROUTE_TYPE_WIRED | OHM_EXT_ROUTE_TYPE_WIRELESS))
+        return TYPE_EXTERNAL;
+
+    return TYPE_DEFAULT;
+}
 
 static void
 init_done_cb (NHook *hook, void *data, void *userdata)
@@ -60,9 +85,14 @@ init_done_cb (NHook *hook, void *data, void *userdata)
     NContext       *context = n_core_get_context (core);
     const char     *key     = NULL;
     const char     *role    = NULL;
-    NValue         *value   = NULL;
+    const NValue   *value   = NULL;
     int             volume  = 0;
     GHashTableIter  iter;
+
+    /* query initial route */
+    value = n_context_get_value (context, CONTEXT_ROUTE_OUTPUT_TYPE_KEY);
+    output_route_type_val = n_value_get_uint (value);
+    N_DEBUG (LOG_CAT "initial route type %s", output_route_type_to_string());
 
     /* query the initial volume values from the keys that we care
        about. */
@@ -203,6 +233,12 @@ void context_value_changed_cb (NContext *context, const char *key,
 
     const char *role   = NULL;
     int         volume = 0;
+
+    if (!g_strcmp0 (key, CONTEXT_ROUTE_OUTPUT_TYPE_KEY)) {
+        output_route_type_val = n_value_get_uint (new_value);
+        N_DEBUG (LOG_CAT "route changes to %s", output_route_type_to_string());
+        return;
+    }
 
     role = g_hash_table_lookup (stream_restore_role_map, key);
     if (!role)
