@@ -20,6 +20,7 @@
  */
 
 #include <glib.h>
+#include <glib-unix.h>
 #include <getopt.h>
 #include <unistd.h>
 #include <signal.h>
@@ -30,19 +31,21 @@
 
 #define LOG_CAT "core: "
 
-static gint _default_loglevel = N_LOG_LEVEL_NONE;
-
 typedef struct _AppData
 {
     GMainLoop *loop;
     NCore     *core;
+    gint       default_loglevel;
+    guint      sigusr1_source;
+    guint      sigint_source;
+    guint      sigterm_source;
 } AppData;
 
 static gboolean
-parse_cmdline (int argc, char **argv)
+parse_cmdline (int argc, char **argv, AppData *app)
 {
     int opt, opt_index;
-    int level = _default_loglevel;
+    int level = app->default_loglevel;
 
     static struct option long_opts[] = {
         { "verbose", 0, 0, 'v' },
@@ -61,68 +64,116 @@ parse_cmdline (int argc, char **argv)
         }
     }
 
-    _default_loglevel = level;
+    app->default_loglevel = level;
     n_log_set_level (level);
 
     return TRUE;
 }
 
 static void
-handle_signal (int signum, siginfo_t *info, void *ptr)
+quit (AppData *app)
 {
-    (void) signum;
-    (void) info;
-    (void) ptr;
+    if (app && app->loop)
+        g_main_loop_quit (app->loop);
+}
 
-    if (signum != SIGUSR1)
-        return;
+static gboolean
+handle_sigint (gpointer userdata)
+{
+    AppData *app = userdata;
+
+    quit (app);
+    app->sigint_source = 0;
+
+    return FALSE;
+}
+
+static gboolean
+handle_sigterm (gpointer userdata)
+{
+    AppData *app = userdata;
+
+    quit (app);
+    app->sigterm_source = 0;
+
+    return FALSE;
+}
+
+static gboolean
+handle_sigusr1 (gpointer userdata)
+{
+    AppData *app = userdata;
 
     if (n_log_get_target () == N_LOG_TARGET_SYSLOG) {
         n_log_set_target (N_LOG_TARGET_STDOUT);
-        n_log_set_level  (_default_loglevel);
+        n_log_set_level  (app->default_loglevel);
     }
     else {
         n_log_set_target (N_LOG_TARGET_SYSLOG);
         n_log_set_level  (N_LOG_LEVEL_ENTER);
     }
 
-    N_DEBUG (LOG_CAT "SIGUSR1");
+    return TRUE;
 }
 
 static void
-install_signal_handler ()
+install_signal_handlers (AppData *app)
 {
-    struct sigaction act;
+    app->sigusr1_source = g_unix_signal_add (SIGUSR1,
+                                             handle_sigusr1,
+                                             app);
+    app->sigterm_source = g_unix_signal_add (SIGTERM,
+                                             handle_sigterm,
+                                             app);
+    app->sigint_source  = g_unix_signal_add (SIGINT,
+                                             handle_sigint,
+                                             app);
+}
 
-    memset(&act, 0, sizeof (act));
-    act.sa_sigaction = handle_signal;
-    act.sa_flags     = SA_SIGINFO;
+static void
+remove_signal_handlers (AppData *app)
+{
+    if (app->sigusr1_source)
+        g_source_remove (app->sigusr1_source), app->sigusr1_source = 0;
 
-    sigaction (SIGUSR1, &act, NULL);
+    if (app->sigterm_source)
+        g_source_remove (app->sigterm_source), app->sigterm_source = 0;
+
+    if (app->sigint_source)
+        g_source_remove (app->sigint_source), app->sigint_source = 0;
 }
 
 int
 main (int argc, char *argv[])
 {
-    AppData *app = NULL;
+    AppData app;
 
-    install_signal_handler ();
-    n_log_initialize (_default_loglevel);
+    memset (&app, 0, sizeof (app));
+    app.default_loglevel = N_LOG_LEVEL_NONE;
+    n_log_initialize (app.default_loglevel);
 
-    if (!parse_cmdline (argc, argv))
+    if (!parse_cmdline (argc, argv, &app))
         return 1;
 
-    app = g_new0 (AppData, 1);
-    app->loop = g_main_loop_new (NULL, 0);
-    app->core = n_core_new (&argc, argv);
+    N_DEBUG ("daemon: Starting.");
+    app.loop = g_main_loop_new (NULL, 0);
+    app.core = n_core_new (&argc, argv);
 
-    if (!n_core_initialize (app->core))
-        return 1;
+    if (!n_core_initialize (app.core)) {
+        N_ERROR ("daemon: Initialization failed.");
+        return 2;
+    }
 
-    g_main_loop_run   (app->loop);
-    n_core_shutdown   (app->core);
-    n_core_free       (app->core);
-    g_main_loop_unref (app->loop);
+    install_signal_handlers (&app);
+
+    N_DEBUG ("daemon: Startup complete.");
+    g_main_loop_run   (app.loop);
+    N_DEBUG ("daemon: Shutdown initiated.");
+    remove_signal_handlers (&app);
+    n_core_shutdown   (app.core);
+    n_core_free       (app.core);
+    g_main_loop_unref (app.loop);
+    N_DEBUG ("daemon: Terminated.");
 
     return 0;
 }
