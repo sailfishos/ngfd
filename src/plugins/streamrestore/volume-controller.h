@@ -32,6 +32,7 @@ typedef void (*volume_controller_subscribe_cb) (const char *stream_name, int vol
 int  volume_controller_initialize ();
 void volume_controller_shutdown   ();
 int  volume_controller_update     (const char *role, int volume);
+void volume_controller_get_volume (const char *role);
 void volume_controller_subscribe  (const char *stream_name, void *data);
 void volume_controller_unsubscribe(const char *stream_name);
 void volume_controller_set_subscribe_cb (volume_controller_subscribe_cb cb, void *userdata);
