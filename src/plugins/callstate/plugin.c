@@ -37,7 +37,6 @@ static void
 update_context_call_state (NContext *context, const char *value)
 {
     NValue *v = n_value_new ();
-    v = n_value_new ();
     n_value_set_string (v, value);
     n_context_set_value (context, CALL_STATE_KEY, v);
 }
