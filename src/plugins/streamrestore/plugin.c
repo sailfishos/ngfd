@@ -78,6 +78,11 @@ static GList      *transform_entries       = NULL; /* contains transform_entry e
 static guint       output_route_type_val   = 0;
 static NContext   *context                 = NULL;
 
+static void context_value_changed_cb (NContext *context, const char *key,
+                                      const NValue *old_value,
+                                      const NValue *new_value,
+                                      void *userdata);
+
 static const char*
 output_route_type_to_string ()
 {
@@ -453,6 +458,9 @@ hash_table_add_cb (gpointer data, gpointer user_data)
         g_hash_table_insert (stream_restore_role_map,
                              g_strdup (c->key),
                              entries);
+
+        /* listen to the context value changes */
+        n_context_subscribe_value_change (context, c->key, context_value_changed_cb, NULL);
     }
 }
 
@@ -495,10 +503,11 @@ volume_add_role_key_cb (const char *key, const NValue *value, gpointer userdata)
     }
 }
 
-void context_value_changed_cb (NContext *context, const char *key,
-                               const NValue *old_value,
-                               const NValue *new_value,
-                               void *userdata)
+static void
+context_value_changed_cb (NContext *context, const char *key,
+                          const NValue *old_value,
+                          const NValue *new_value,
+                          void *userdata)
 {
     (void) context;
     (void) old_value;
@@ -545,6 +554,9 @@ N_PLUGIN_LOAD (plugin)
     NCore     *core    = NULL;
     NProplist *params  = NULL;
 
+    core = n_plugin_get_core (plugin);
+    context = n_core_get_context (core);
+
     stream_restore_role_map = g_hash_table_new_full (g_str_hash, g_str_equal,
                                                      g_free, entry_list_free);
 
@@ -558,16 +570,13 @@ N_PLUGIN_LOAD (plugin)
     /* connect to the init done hook to query the initial values for
        roles. */
 
-    core = n_plugin_get_core (plugin);
-
     (void) n_core_connect (core, N_CORE_HOOK_INIT_DONE, 0,
         init_done_cb, plugin);
 
     /* listen to the context value changes */
 
-    context = n_core_get_context (core);
-    n_context_subscribe_value_change (context, NULL, context_value_changed_cb,
-        NULL);
+    n_context_subscribe_value_change (context, CONTEXT_ROUTE_OUTPUT_TYPE_KEY,
+                                      context_value_changed_cb, NULL);
 
     return TRUE;
 }
