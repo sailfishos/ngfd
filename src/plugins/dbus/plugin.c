@@ -51,7 +51,6 @@ N_PLUGIN_DESCRIPTION ("D-Bus interface")
 #define NGF_DBUS_METHOD_PAUSE "Pause"
 #define NGF_DBUS_METHOD_DEBUG "internal_debug"
 
-#define NGF_DBUS_PROPERTY_ID   "dbus.event.id"
 #define NGF_DBUS_PROPERTY_NAME "dbus.event.client"
 
 #define DBUS_CLIENT_MATCH "type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged'"
@@ -96,7 +95,6 @@ typedef struct _DBusInterfaceData
 {
     DBusConnection  *connection;
     NInputInterface *iface;
-    uint32_t event_id;
     GSList *clients; // Internal cache of all clients currently connected
     uint32_t client_count;
 } DBusInterfaceData;
@@ -322,7 +320,7 @@ client_list_add (DBusInterfaceData *idata, DBusInterfaceClient *client)
 
 static DBusHandlerResult
 dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
-                     NInputInterface *iface, uint32_t event_id)
+                     NInputInterface *iface)
 {
     DBusInterfaceData   *idata      = NULL;
     const char          *event      = NULL;
@@ -364,17 +362,17 @@ dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
     client_ref (client);
     client_request_new (client);
 
-    N_INFO (LOG_CAT ">> play received for event '%s' with id '%u' (client %s : %u active request(s))",
-                    event, event_id, client->name, client->active_requests);
-
-    // Reply internal event_id immediately
-    dbusif_ack (connection, msg, event_id);
-
-    n_proplist_set_uint (properties, NGF_DBUS_PROPERTY_ID, event_id);
     n_proplist_set_pointer (properties, NGF_DBUS_PROPERTY_NAME, client);
     request = n_request_new_with_event_and_properties (event, properties);
-    n_input_interface_play_request (iface, request);
     n_proplist_free (properties);
+
+    N_INFO (LOG_CAT ">> play received for event '%s' with id '%u' (client %s : %u active request(s))",
+                    event, n_request_get_id (request), client->name, client->active_requests);
+
+    // Reply internal event_id immediately
+    dbusif_ack (connection, msg, n_request_get_id (request));
+
+    n_input_interface_play_request (iface, request);
 
     return DBUS_HANDLER_RESULT_HANDLED;
 
@@ -396,8 +394,6 @@ dbusif_lookup_request (NInputInterface *iface, uint32_t event_id)
     NRequest  *request         = NULL;
     GList     *active_requests = NULL;
     GList     *iter            = NULL;
-    guint      match_id        = 0;
-    NProplist *properties      = NULL;
 
     if (event_id == 0)
         return NULL;
@@ -407,12 +403,8 @@ dbusif_lookup_request (NInputInterface *iface, uint32_t event_id)
 
     for (iter = g_list_first (active_requests); iter; iter = g_list_next (iter)) {
         request = (NRequest*) iter->data;
-        properties = (NProplist*) n_request_get_properties (request);
-        if (!properties)
-            continue;
 
-        match_id = n_proplist_get_uint (properties, NGF_DBUS_PROPERTY_ID);
-        if (match_id == event_id)
+        if (n_request_get_id (request) == event_id)
             return request;
     }
 
@@ -663,14 +655,11 @@ dbusif_message_function (DBusConnection *connection, DBusMessage *msg,
                          void *userdata)
 {
     NInputInterface *iface  = (NInputInterface*) userdata;
-    DBusInterfaceData *idata = NULL;
     const char      *member = dbus_message_get_member (msg);
     DBusError error = DBUS_ERROR_INIT;
     gchar *component = NULL;
     gchar *s1 = NULL;
     gchar *s2 = NULL;
-
-    idata = n_input_interface_get_userdata (iface);
 
     if (dbus_message_is_signal (msg, "org.freedesktop.DBus", "NameOwnerChanged")) {
         if (!dbus_message_get_args
@@ -707,7 +696,7 @@ dbusif_message_function (DBusConnection *connection, DBusMessage *msg,
         return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
     if (g_str_equal (member, NGF_DBUS_METHOD_PLAY))
-        return dbusif_play_handler (connection, msg, iface, ++idata->event_id);
+        return dbusif_play_handler (connection, msg, iface);
 
     else if (g_str_equal (member, NGF_DBUS_METHOD_STOP))
         return dbusif_stop_handler (connection, msg, iface);
@@ -807,7 +796,7 @@ dbusif_send_reply (NInputInterface *iface, NRequest *request, int code)
     idata = n_input_interface_get_userdata (iface);
 
     props  = n_request_get_properties (request);
-    event_id = n_proplist_get_uint (props, NGF_DBUS_PROPERTY_ID);
+    event_id = n_request_get_id (request);
     status = code;
 
     if (event_id == 0)
