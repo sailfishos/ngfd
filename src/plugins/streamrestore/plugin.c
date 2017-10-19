@@ -435,6 +435,7 @@ add_transform_entry (const char *name, const char *values, gboolean dst_is_conte
     transform_entries = g_list_append (transform_entries, entry);
     volume_controller_set_subscribe_cb ((volume_controller_subscribe_cb) volume_changed_cb, NULL);
     volume_controller_subscribe (entry->src, entry);
+    volume_controller_get_volume (entry->src);
     return;
 
 error:
