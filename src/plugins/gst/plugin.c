@@ -682,6 +682,28 @@ system_sound_level_changed (NContext *context,
 }
 
 static void
+call_state_changed (NContext *context,
+                    const char *key,
+                    const NValue *old_value,
+                    const NValue *new_value,
+                    void *userdata)
+{
+    const char *state;
+
+    (void) context;
+    (void) key;
+    (void) old_value;
+    (void) userdata;
+
+    state = n_value_get_string (new_value);
+
+    if (state && !strcmp (state, "active")) {
+        N_DEBUG (LOG_CAT "call active, silence all audio");
+        stream_list_stop_all ();
+    }
+}
+
+static void
 init_done_cb (NHook *hook, void *data, void *userdata)
 {
     (void) hook;
@@ -702,6 +724,8 @@ init_done_cb (NHook *hook, void *data, void *userdata)
         N_WARNING (LOG_CAT "failed to subscribe to system sound "
                            "volume change");
     }
+
+    n_context_subscribe_value_change (context, "call_state.mode", call_state_changed, NULL);
 }
 
 static int
