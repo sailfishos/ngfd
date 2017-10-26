@@ -495,6 +495,7 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
             N_WARNING (LOG_CAT "error: %s", error->message);
             g_error_free (error);
             n_sink_interface_fail (stream->iface, stream->request);
+            stream->bus_watch_id = 0;
             return FALSE;
         }
 
