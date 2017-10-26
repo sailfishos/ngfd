@@ -35,6 +35,23 @@ n_request_new ()
 }
 
 NRequest*
+n_request_copy (const NRequest *request)
+{
+    NRequest *copy;
+
+    copy                = g_slice_new0 (NRequest);
+    copy->id            = request->id;
+    copy->name          = request->name ? g_strdup (request->name) : NULL;
+    copy->input_iface   = request->input_iface;
+    if (request->original_properties)
+        copy->properties = n_proplist_copy (request->original_properties);
+    else if (request->properties)
+        copy->properties = n_proplist_copy (request->properties);
+
+    return copy;
+}
+
+NRequest*
 n_request_new_with_event (const char *event)
 {
     if (!event)

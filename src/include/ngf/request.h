@@ -33,6 +33,11 @@ typedef struct _NRequest NRequest;
  */
 NRequest*        n_request_new            ();
 
+/** Copy request
+ * @return Allocated request structure
+ */
+NRequest*        n_request_copy           (const NRequest *request);
+
 /** Create request with event
  * @param event Event to be added to request
  * @return Allocated request structure
