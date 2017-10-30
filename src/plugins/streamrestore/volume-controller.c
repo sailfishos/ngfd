@@ -43,6 +43,11 @@
 #define ENTRY_REMOVED_SIGNAL    STREAM_RESTORE_IF "." ENTRY_REMOVED_MEMBER
 #define VOLUME_UPDATED_SIGNAL   STREAM_ENTRY_IF "." VOLUME_UPDATED_MEMBER
 
+#define MAINVOLUME_IF           "com.Meego.MainVolume2"
+#define MAINVOLUME_PATH         "/com/meego/mainvolume2"
+#define MEDIA_STATE_CHANGED_MEMBER "MediaStateChanged"
+#define MEDIA_STATE_SIGNAL      MAINVOLUME_IF "." MEDIA_STATE_CHANGED_MEMBER
+
 #define DBUS_PROPERTIES_IF      "org.freedesktop.DBus.Properties"
 #define PULSE_LOOKUP_DEST       "org.PulseAudio1"
 #define PULSE_LOOKUP_PATH       "/org/pulseaudio/server_lookup1"
@@ -97,6 +102,9 @@ static gboolean        object_map_complete               = FALSE;
 static void           *subscribe_userdata                = NULL;
 static volume_controller_subscribe_cb subscribe_callback = NULL;
 static gboolean        queue_subscribe                   = FALSE;
+
+static media_state_subscribe_cb media_state_callback     = NULL;
+static void           *media_state_userdata              = NULL;
 
 static gboolean          retry_timeout_cb           (gpointer userdata);
 static DBusHandlerResult filter_cb                  (DBusConnection *connection, DBusMessage *msg, void *data);
@@ -331,6 +339,17 @@ filter_cb (DBusConnection *connection, DBusMessage *msg, void *data)
             if (get_volume (msg, &volume)) {
                 subscribe_callback (item->stream_name, FROM_PA_VOL(volume), item->data, subscribe_userdata);
             }
+        }
+    }
+    else if (media_state_callback &&
+             dbus_message_has_interface (msg, MAINVOLUME_IF) &&
+             dbus_message_has_path      (msg, MAINVOLUME_PATH) &&
+             dbus_message_has_member    (msg, MEDIA_STATE_CHANGED_MEMBER))
+    {
+        const char *media_state;
+
+        if (dbus_message_get_args(msg, NULL, DBUS_TYPE_STRING, &media_state, DBUS_TYPE_INVALID)) {
+            media_state_callback (media_state, media_state_userdata);
         }
     }
 
@@ -764,6 +783,7 @@ process_queued_ops ()
     if (queue_subscribe) {
         listen_for_signal (NEW_ENTRY_SIGNAL, NULL);
         listen_for_signal (ENTRY_REMOVED_SIGNAL, NULL);
+        listen_for_signal (MEDIA_STATE_SIGNAL, NULL);
         update_object_map_listen ();
         queue_subscribe = FALSE;
     }
@@ -1031,6 +1051,7 @@ volume_controller_subscribe  (const char *stream_name, void *data)
     if (first && volume_bus) {
         listen_for_signal (NEW_ENTRY_SIGNAL, NULL);
         listen_for_signal (ENTRY_REMOVED_SIGNAL, NULL);
+        listen_for_signal (MEDIA_STATE_SIGNAL, NULL);
     }
 
     if (volume_bus)
@@ -1063,6 +1084,7 @@ volume_controller_unsubscribe (const char *stream_name)
         if (volume_bus) {
             stop_listen_for_signal (NEW_ENTRY_SIGNAL);
             stop_listen_for_signal (ENTRY_REMOVED_SIGNAL);
+            stop_listen_for_signal (MEDIA_STATE_SIGNAL);
         }
         g_hash_table_unref (subscribe_map);
         subscribe_map = NULL;
@@ -1076,4 +1098,11 @@ volume_controller_set_subscribe_cb (volume_controller_subscribe_cb cb, void *use
 {
     subscribe_callback = cb;
     subscribe_userdata = userdata;
+}
+
+void
+volume_controller_set_media_state_subscribe_cb (media_state_subscribe_cb cb, void *userdata)
+{
+    media_state_callback = cb;
+    media_state_userdata = userdata;
 }

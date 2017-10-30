@@ -543,6 +543,18 @@ context_value_changed_cb (NContext *context, const char *key,
 }
 
 static void
+media_state_changed_cb (const char *media_state, void *userdata)
+{
+    NValue *v;
+
+    (void) userdata;
+
+    v = n_value_new ();
+    n_value_set_string (v, media_state);
+    n_context_set_value (context, "media.state", v);
+}
+
+static void
 entry_list_free (gpointer data)
 {
     GSList *entries = data;
@@ -579,6 +591,9 @@ N_PLUGIN_LOAD (plugin)
     n_context_subscribe_value_change (context, CONTEXT_ROUTE_OUTPUT_TYPE_KEY,
                                       context_value_changed_cb, NULL);
 
+    media_state_changed_cb ("inactive", NULL);
+    volume_controller_set_media_state_subscribe_cb (media_state_changed_cb, NULL);
+
     return TRUE;
 }
 
@@ -602,6 +617,8 @@ N_PLUGIN_UNLOAD (plugin)
         g_list_free_full (transform_entries, (GDestroyNotify) transform_entry_unsubscribe_free);
         transform_entries = NULL;
     }
+
+    volume_controller_set_media_state_subscribe_cb (NULL, NULL);
 
     volume_controller_shutdown ();
 }
