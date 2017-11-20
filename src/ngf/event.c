@@ -19,18 +19,25 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
+#include <string.h>
 #include <glib.h>
 #include <ngf/log.h>
 #include "event-internal.h"
 
 #define LOG_CAT "event: "
 
+#define GROUP_ENTRY_DEFINE  "%define "
+#define GROUP_ENTRY_INCLUDE "%include"
+
 static int        n_event_parse_rule        (const char *rule, NProplist *proplist);
 static int        n_event_parse_group_title (const char *value, gchar **out_title,
                                              NProplist **out_rules);
-static NProplist* n_event_parse_properties  (GKeyFile *keyfile, const char *group, GHashTable *key_types);
-static NEvent*    n_event_parse_group       (GKeyFile *keyfile, const char *group, GHashTable *key_types);
+static NProplist* n_event_parse_properties  (GKeyFile *keyfile, const char *group,
+                                             GHashTable *key_types, GHashTable *defines);
+static NEvent*    n_event_parse_group       (GKeyFile *keyfile, const char *group,
+                                             GHashTable *key_types, GHashTable *defines);
 
+static const char* strip_prefix             (const char *group, const char *prefix);
 
 
 NEvent*
@@ -40,12 +47,64 @@ n_event_new ()
 }
 
 NEvent*
-n_event_new_from_group (NCore *core, GKeyFile *keyfile, const char *group)
+n_event_new_from_group (NCore *core, GKeyFile *keyfile,
+                        const char *group, GHashTable *defines)
 {
     g_assert (keyfile != NULL);
     g_assert (group != NULL);
 
-    return n_event_parse_group (keyfile, group, core->key_types);
+    return n_event_parse_group (keyfile, group, core->key_types, defines);
+}
+
+static const char*
+strip_prefix (const char *group, const char *prefix)
+{
+    const char *name = NULL;
+    const char *tmp;
+    size_t sep;
+
+    if (!g_str_has_prefix (group, prefix))
+        goto done;
+
+    tmp = group + strlen (prefix);
+    if (strlen (tmp) < 1)
+        goto done;
+
+    sep = strspn (tmp, " ");
+    tmp = tmp + sep;
+
+    if (strlen (tmp) < 1)
+        goto done;
+
+    name = tmp;
+
+done:
+    return name;
+}
+
+void
+n_event_parse_defines (NCore *core, GKeyFile *keyfile,
+                       const char *group, GHashTable **defines)
+{
+    NProplist  *proplist = NULL;
+    const char *name;
+    char *key;
+
+    g_assert (core);
+    g_assert (keyfile);
+    g_assert (group);
+    g_assert (defines);
+
+    if ((name = strip_prefix (group, GROUP_ENTRY_DEFINE))) {
+        if (!*defines)
+            *defines = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                              g_free, (GDestroyNotify) n_proplist_free);
+
+        proplist = n_event_parse_properties (keyfile, group, core->key_types, NULL);
+        key = g_strdup (name);
+        g_strstrip (key);
+        g_hash_table_insert (*defines, key, proplist);
+    }
 }
 
 void
@@ -129,13 +188,14 @@ done:
 
 static NProplist*
 n_event_parse_properties (GKeyFile *keyfile, const char *group,
-                          GHashTable *keytypes)
+                          GHashTable *keytypes, GHashTable *defines)
 {
     g_assert (keyfile != NULL);
     g_assert (group != NULL);
     g_assert (keytypes != NULL);
 
     NProplist  *proplist = NULL;
+    NProplist  *includes = NULL;
     gchar     **key_list = NULL;
     gchar     **key      = NULL;
     gchar      *value    = NULL;
@@ -146,6 +206,21 @@ n_event_parse_properties (GKeyFile *keyfile, const char *group,
     proplist = n_proplist_new ();
 
     key_list = g_key_file_get_keys (keyfile, group, NULL, NULL);
+
+    /* first pass for getting includes in */
+    for (key = key_list; *key; ++key) {
+        if (g_str_has_prefix (*key, GROUP_ENTRY_INCLUDE)) {
+            value = g_key_file_get_string (keyfile, group, *key, NULL);
+            if (defines && (includes = g_hash_table_lookup (defines, value)))
+                n_proplist_merge (proplist, includes);
+            else
+                N_WARNING (LOG_CAT "tried to include unknown define '%s'", value);
+            g_free (value);
+        }
+    }
+
+    /* second pass for getting event values, also override possible
+     * values coming from includes. */
     for (key = key_list; *key; ++key) {
         key_type = GPOINTER_TO_INT(g_hash_table_lookup (keytypes, *key));
 
@@ -165,13 +240,15 @@ n_event_parse_properties (GKeyFile *keyfile, const char *group,
                 break;
         }
     }
+
     g_strfreev (key_list);
 
     return proplist;
 }
 
 static NEvent*
-n_event_parse_group (GKeyFile *keyfile, const char *group, GHashTable *keytypes)
+n_event_parse_group (GKeyFile *keyfile, const char *group,
+                     GHashTable *keytypes, GHashTable *defines)
 {
     g_assert (keyfile != NULL);
     g_assert (group != NULL);
@@ -183,13 +260,15 @@ n_event_parse_group (GKeyFile *keyfile, const char *group, GHashTable *keytypes)
     gchar     *title = NULL;
 
     /* parse the group title and related rules. */
+    if (g_str_has_prefix (group, GROUP_ENTRY_DEFINE))
+        return NULL;
 
     if (!n_event_parse_group_title (group, &title, &rules))
-        return FALSE;
+        return NULL;
 
     /* convert the group content entries to property list. */
 
-    props = n_event_parse_properties (keyfile, group, keytypes);
+    props = n_event_parse_properties (keyfile, group, keytypes, defines);
 
     /* create a new event based on the parsed data. */
 

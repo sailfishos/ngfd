@@ -686,6 +686,7 @@ n_core_parse_events_from_file (NCore *core, const char *filename)
     g_assert (filename != NULL);
 
     GKeyFile  *keyfile    = NULL;
+    GHashTable *defines   = NULL;
     GError    *error      = NULL;
     gchar    **group_list = NULL;
     gchar    **group      = NULL;
@@ -705,14 +706,20 @@ n_core_parse_events_from_file (NCore *core, const char *filename)
     N_DEBUG (LOG_CAT "processing event file '%s'", filename);
 
     group_list = g_key_file_get_groups (keyfile, NULL);
+
+    for (group = group_list; *group; ++group)
+        n_event_parse_defines (core, keyfile, *group, &defines);
+
     for (group = group_list; *group; ++group) {
-        event = n_event_new_from_group (core, keyfile, *group);
+        event = n_event_new_from_group (core, keyfile, *group, defines);
         if (event)
             n_core_add_event (core, event);
     }
 
     g_strfreev      (group_list);
     g_key_file_free (keyfile);
+    if (defines)
+        g_hash_table_destroy (defines);
 }
 
 static int
