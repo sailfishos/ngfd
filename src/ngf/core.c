@@ -461,16 +461,16 @@ n_core_initialize (NCore *core)
 
     g_list_free (optional_plugins);
 
-    /* setup the sink priorities based on the sink-order */
-
-    n_core_set_sink_priorities (core->sinks, core->sink_order);
-
     /* initialize all sinks. if no sinks, we're done. */
 
     if (!core->sinks) {
         N_ERROR (LOG_CAT "no plugin has registered sink interface");
         goto failed_init;
     }
+
+    /* setup the sink priorities based on the sink-order */
+
+    n_core_set_sink_priorities (core->sinks, core->sink_order);
 
     for (sink = core->sinks; *sink; ++sink) {
         if ((*sink)->funcs.initialize && !(*sink)->funcs.initialize (*sink)) {
