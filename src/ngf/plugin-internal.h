@@ -35,7 +35,7 @@ struct _NPlugin
 {
     NCore       *core;              /* core functionality */
     GModule     *module;            /* plugin module handle */
-    gpointer     userdata;          /* plugin internal data */
+    gpointer     userdata;          /* plugin implementor internal data */
     NProplist   *params;            /* plugin parameters */
 
     const char* (*get_name)    ();

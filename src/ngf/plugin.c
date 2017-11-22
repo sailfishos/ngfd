@@ -107,6 +107,22 @@ n_plugin_get_params (NPlugin *plugin)
 }
 
 void
+n_plugin_set_userdata (NPlugin *plugin, gpointer userdata)
+{
+    g_assert (plugin);
+
+    plugin->userdata = userdata;
+}
+
+gpointer
+n_plugin_get_userdata (NPlugin *plugin)
+{
+    g_assert (plugin);
+
+    return plugin->userdata;
+}
+
+void
 n_plugin_register_sink (NPlugin *plugin, const NSinkInterfaceDecl *decl)
 {
     if (!plugin || !decl)
