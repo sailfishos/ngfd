@@ -221,7 +221,7 @@ static GHashTable *ffm_new_effect_list(const char *effect_data)
 
 	for (i = 0; effect_names[i] != NULL; i++) {
 		/* Add effect key to effect list with initial data */
-		data = g_new(struct ffm_effect_data, 1);
+		data = g_new0(struct ffm_effect_data, 1);
 		data->id = -1;
 		data->repeat = 1;
 		g_hash_table_insert(list, strdup(effect_names[i]), data);
