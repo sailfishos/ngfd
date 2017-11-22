@@ -919,7 +919,7 @@ update_fade_effect (FadeEffect *effect, gdouble elapsed, gdouble volume)
 
 static gboolean
 gst_sink_fake_play_cb(gpointer userdata) {
-    StreamData *stream = (StreamData*)userdata;
+    StreamData *stream = userdata;
 
     n_sink_interface_synchronize (stream->iface, stream->request);
 
@@ -928,7 +928,7 @@ gst_sink_fake_play_cb(gpointer userdata) {
 
 static gboolean
 gst_sink_fake_play_complete_cb (gpointer userdata) {
-    StreamData *stream = (StreamData*)userdata;
+    StreamData *stream = userdata;
 
     n_sink_interface_complete (stream->iface, stream->request);
 
@@ -1169,7 +1169,7 @@ gst_sink_stop (NSinkInterface *iface, NRequest *request)
 
     N_DEBUG (LOG_CAT "stop.");
 
-    stream = (StreamData*) n_request_get_data (request, GST_KEY);
+    stream = n_request_get_data (request, GST_KEY);
     g_assert (stream != NULL);
     prev_state = stream->state;
     stream->state = STREAM_STATE_STOPPED;
