@@ -26,10 +26,12 @@
 #include <dirent.h>
 
 #include <ngf/log.h>
+#include <ngf/core-dbus.h>
 #include "core-internal.h"
 #include "event-internal.h"
 #include "request-internal.h"
 #include "context-internal.h"
+#include "core-dbus-internal.h"
 
 #define LOG_CAT  "core: "
 
@@ -301,6 +303,7 @@ n_core_new (int *argc, char **argv)
     core->conf_path   = n_core_get_path ("NGF_CONF_PATH", DEFAULT_CONF_PATH);
     core->plugin_path = n_core_get_path ("NGF_PLUGIN_PATH", DEFAULT_PLUGIN_PATH);
     core->context     = n_context_new ();
+    core->dbus        = n_dbus_helper_new (core);
 
     core->event_table = g_hash_table_new_full (g_str_hash, g_str_equal,
         g_free, NULL);
@@ -348,6 +351,7 @@ n_core_free (NCore *core)
     g_hash_table_foreach (core->event_table, n_core_free_event_list_cb, NULL);
     g_hash_table_destroy (core->event_table);
 
+    n_dbus_helper_free (core->dbus);
     n_context_free (core->context);
     g_free (core->plugin_path);
     g_free (core->conf_path);

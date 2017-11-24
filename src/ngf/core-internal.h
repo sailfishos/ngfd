@@ -33,6 +33,7 @@
 #include "event-internal.h"
 #include "request-internal.h"
 #include "context-internal.h"
+#include "core-dbus-internal.h"
 
 struct _NCore
 {
@@ -53,6 +54,8 @@ struct _NCore
     NContext         *context;              /* global context for broadcasting and sharing values */
     GHashTable       *event_table;          /* hash table of GList* containing NEvent* for easy lookup */
     GList            *event_list;           /* list of all events */
+
+    NDBusHelper      *dbus;                 /* dbus helper */
 
     GHashTable       *key_types;
     GList            *requests;             /* active requests */
