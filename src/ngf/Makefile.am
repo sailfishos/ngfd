@@ -1,7 +1,7 @@
 bin_PROGRAMS = ngfd
 
-ngfd_CFLAGS = $(NGFD_CFLAGS) -I$(top_srcdir)/src/include
-ngfd_LDFLAGS = $(NGFD_LIBS) -lrt
+ngfd_CFLAGS = $(NGFD_CFLAGS) $(DBUS_CFLAGS) -I$(top_srcdir)/src/include
+ngfd_LDFLAGS = $(NGFD_LIBS) $(DBUS_LIBS) -lrt
 
 ngfd_SOURCES =                \
     main.c                    \
@@ -37,5 +37,7 @@ ngfd_SOURCES =                \
     request-internal.h        \
     request.h                 \
     request.c                 \
+    core-dbus-internal.h      \
+    core-dbus.c               \
     log.h                     \
     log.c
