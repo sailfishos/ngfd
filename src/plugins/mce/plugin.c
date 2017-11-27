@@ -18,12 +18,14 @@
  * License along with this work; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
- 
+
 #include <ngf/plugin.h>
+#include <ngf/core-dbus.h>
 #include <dbus/dbus.h>
 #include <dbus/dbus-glib-lowlevel.h>
 #include <mce/dbus-names.h>
 
+#define LOG_CAT "mce: "
 #define MCE_KEY "plugin.mce.data"
 
 N_PLUGIN_NAME        ("mce")
@@ -37,46 +39,28 @@ typedef struct _MceData
     gchar          *pattern;
 } MceData;
 
-DBusConnection *bus = NULL;
-GList *active_events = NULL;
+static GList *active_events;
 
-static gboolean
-call_dbus_method (DBusConnection *bus, DBusMessage *msg)
+static void
+backlight_on (NCore *core)
 {
-    if (!dbus_connection_send (bus, msg, 0)) {
-        N_WARNING ("Failed to send DBus message %s to interface %s", dbus_message_get_member (msg), dbus_message_get_interface (msg));
-        return FALSE;
-    }
-
-    return TRUE;
+    n_dbus_async_call (core,
+                       NULL,
+                       NULL,
+                       DBUS_BUS_SYSTEM,
+                       MCE_SERVICE,
+                       MCE_REQUEST_PATH,
+                       MCE_REQUEST_IF,
+                       MCE_DISPLAY_ON_REQ);
 }
 
 static gboolean
-backlight_on (void)
+toggle_pattern (NCore *core, const char *pattern, gboolean activate)
 {
     DBusMessage *msg = NULL;
     gboolean     ret = FALSE;
 
-    if (bus == NULL)
-        return FALSE;
-
-    msg = dbus_message_new_method_call (MCE_SERVICE, MCE_REQUEST_PATH, MCE_REQUEST_IF, MCE_DISPLAY_ON_REQ);
-    if (msg == NULL)
-        return FALSE;
-
-    ret = call_dbus_method (bus, msg);
-    dbus_message_unref (msg);
-
-    return ret;
-}
-
-static gboolean
-toggle_pattern (const char *pattern, gboolean activate)
-{
-    DBusMessage *msg = NULL;
-    gboolean     ret = FALSE;
-
-    if (bus == NULL || pattern == NULL)
+    if (!pattern)
         return FALSE;
 
     msg = dbus_message_new_method_call (MCE_SERVICE, MCE_REQUEST_PATH, MCE_REQUEST_IF,
@@ -90,18 +74,19 @@ toggle_pattern (const char *pattern, gboolean activate)
         return FALSE;
     }
 
-    ret = call_dbus_method (bus, msg);
+    ret = n_dbus_async_call_full (core, NULL, NULL, DBUS_BUS_SYSTEM, msg);
     dbus_message_unref (msg);
 
     if (ret)
-        N_DEBUG ("%s >> led pattern %s %s.", __FUNCTION__, pattern, activate ? "activated" : "deactivated");
+        N_DEBUG (LOG_CAT "%s >> led pattern %s %s.", __FUNCTION__, pattern, activate ? "activated" : "deactivated");
 
     return ret;
 }
 
 static DBusHandlerResult
-mce_signal_filter (DBusConnection *connection, DBusMessage *msg, void *user_data)
+mce_signal_filter (NCore *core, DBusConnection *connection, DBusMessage *msg, void *user_data)
 {
+    (void) core;
     (void) connection;
     (void) user_data;
 
@@ -112,16 +97,16 @@ mce_signal_filter (DBusConnection *connection, DBusMessage *msg, void *user_data
         gchar *pattern = NULL;
 
         if (!dbus_message_get_args(msg, &error, DBUS_TYPE_STRING, &pattern, DBUS_TYPE_INVALID)) {
-            N_WARNING ("%s >> failed to read MCE signal arguments, cause: %s", __FUNCTION__, error.message);
+            N_WARNING (LOG_CAT "%s >> failed to read MCE signal arguments, cause: %s", __FUNCTION__, error.message);
             dbus_error_free(&error);
         } else {
             GList *event;
-            N_DEBUG ("%s >> mce finished playing %s", __FUNCTION__, pattern);
+            N_DEBUG (LOG_CAT "%s >> mce finished playing %s", __FUNCTION__, pattern);
             for (event = active_events; event != NULL; event = g_list_next(event)) {
                 MceData *data = (MceData *) event->data;
                 if (g_strcmp0(pattern, data->pattern) == 0) {
                     n_sink_interface_complete(data->iface, data->request);
-                    N_DEBUG ("%s >> led pattern %s complete", __FUNCTION__, data->pattern);
+                    N_DEBUG (LOG_CAT "%s >> led pattern %s complete", __FUNCTION__, data->pattern);
                     active_events = g_list_remove_all(active_events, data);
                     break;
                 }
@@ -130,33 +115,6 @@ mce_signal_filter (DBusConnection *connection, DBusMessage *msg, void *user_data
     }
 
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-}
-
-static int
-mce_sink_initialize (NSinkInterface *iface)
-{
-    (void) iface;
-    DBusError       error;
-
-    dbus_error_init (&error);
-    bus = dbus_bus_get (DBUS_BUS_SYSTEM, &error);
-    if (bus == NULL) {
-        N_WARNING ("%s >> failed to get system bus: %s", __FUNCTION__, error.message);
-        dbus_error_free (&error);
-        return FALSE;
-    }
-
-    char *rule = "type='signal',interface='" MCE_SIGNAL_IF "'";
-    dbus_bus_add_match(bus, rule, &error);
-    if (dbus_error_is_set(&error)) {
-        N_WARNING ("%s >> failed to add D-BUS match rule, cause: %s", __FUNCTION__, error.message);
-        dbus_error_free (&error);
-        return FALSE;
-    }
-
-    dbus_connection_add_filter(bus, mce_signal_filter, NULL, NULL);
-
-    return TRUE;
 }
 
 static void
@@ -200,19 +158,21 @@ static int
 mce_sink_play (NSinkInterface *iface, NRequest *request)
 {
     const NProplist *props = n_request_get_properties (request);
-    (void) iface;
     const gchar *pattern = NULL;
+    NCore *core;
 
     MceData *data = (MceData*) n_request_get_data (request, MCE_KEY);
     g_assert (data != NULL);
 
+    core = n_sink_interface_get_core (iface);
+
     if (n_proplist_get_bool (props, "mce.backlight_on"))
-        backlight_on ();
+        backlight_on (core);
 
     pattern = n_proplist_get_string (props, "mce.led_pattern");
     if (pattern != NULL) {
         data->pattern = g_strdup (pattern);
-        if (toggle_pattern (pattern, TRUE)) {
+        if (toggle_pattern (core, pattern, TRUE)) {
             active_events = g_list_append(active_events, data);
         } else {
             g_free (data->pattern);
@@ -235,13 +195,15 @@ mce_sink_pause (NSinkInterface *iface, NRequest *request)
 static void
 mce_sink_stop (NSinkInterface *iface, NRequest *request)
 {
-    (void) iface;
+    NCore *core;
 
     MceData *data = (MceData*) n_request_get_data (request, MCE_KEY);
     g_assert (data != NULL);
 
+    core = n_sink_interface_get_core (iface);
+
     if (data->pattern) {
-        toggle_pattern (data->pattern, FALSE);
+        toggle_pattern (core, data->pattern, FALSE);
         g_free (data->pattern);
         data->pattern = NULL;
     }
@@ -252,9 +214,11 @@ mce_sink_stop (NSinkInterface *iface, NRequest *request)
 
 N_PLUGIN_LOAD (plugin)
 {
+    NCore *core;
+
     static const NSinkInterfaceDecl decl = {
         .name       = "mce",
-        .initialize = mce_sink_initialize,
+        .initialize = NULL,
         .shutdown   = mce_sink_shutdown,
         .can_handle = mce_sink_can_handle,
         .prepare    = mce_sink_prepare,
@@ -263,6 +227,17 @@ N_PLUGIN_LOAD (plugin)
         .stop       = mce_sink_stop
     };
 
+    core = n_plugin_get_core (plugin);
+    g_assert (core);
+
+    if (n_dbus_add_match (core, mce_signal_filter, NULL, DBUS_BUS_SYSTEM,
+                          MCE_SIGNAL_IF,
+                          MCE_SIGNAL_PATH,
+                          MCE_LED_PATTERN_DEACTIVATED_SIG) == 0) {
+        N_WARNING (LOG_CAT "failed to add filter");
+        return FALSE;
+    }
+
     n_plugin_register_sink (plugin, &decl);
 
     return TRUE;
@@ -270,5 +245,8 @@ N_PLUGIN_LOAD (plugin)
 
 N_PLUGIN_UNLOAD (plugin)
 {
-    (void) plugin;
+    NCore *core;
+
+    core = n_plugin_get_core (plugin);
+    n_dbus_remove_match_by_cb (core, mce_signal_filter);
 }
