@@ -341,7 +341,7 @@ init_done_cb (NHook *hook, void *data, void *userdata)
     g_hash_table_iter_init (&iter, stream_restore_role_map);
     while (g_hash_table_iter_next (&iter, (gpointer) &key, (gpointer) &entries)) {
 
-        value = (NValue*) n_context_get_value (context, key);
+        value = n_context_get_value (context, key);
         if (!value) {
             N_DEBUG (LOG_CAT "no value found for role '%s', key '%s' from context",
                              entry->role, key);
@@ -488,19 +488,19 @@ volume_add_role_key_cb (const char *key, const NValue *value, gpointer userdata)
         new_key = (const char*) key + strlen (SET_KEY_PREFIX);
 
         if (new_key) {
-            volume = atoi (n_value_get_string ((NValue*) value));
-            (void) volume_controller_update (new_key, volume);
+            volume = atoi (n_value_get_string (value));
+            volume_controller_update (new_key, volume);
         }
     } else if (g_str_has_prefix (key, TRANSFORM_KEY_PREFIX)) {
         new_key = (const char*) key + strlen (TRANSFORM_KEY_PREFIX);
 
         if (new_key)
-            add_transform_entry (new_key, n_value_get_string ((const NValue*) value), FALSE);
+            add_transform_entry (new_key, n_value_get_string (value), FALSE);
     } else if (g_str_has_prefix (key, TRANSFORM_TO_CONTEXT_KEY_PREFIX)) {
         new_key = (const char*) key + strlen (TRANSFORM_TO_CONTEXT_KEY_PREFIX);
 
         if (new_key)
-            add_transform_entry (new_key, n_value_get_string ((const NValue*) value), TRUE);
+            add_transform_entry (new_key, n_value_get_string (value), TRUE);
     }
 }
 
@@ -529,14 +529,14 @@ context_value_changed_cb (NContext *context, const char *key,
     if (!entries)
         return;
 
-    if (n_value_type ((NValue*) new_value) != N_VALUE_TYPE_INT) {
+    if (n_value_type (new_value) != N_VALUE_TYPE_INT) {
         N_WARNING (LOG_CAT "invalid value type for role context key '%s'", key);
         return;
     }
 
     for (i = entries; i; i = i->next) {
         entry = i->data;
-        volume = n_value_get_int ((NValue*) new_value);
+        volume = n_value_get_int (new_value);
         if (role_entry_update_and_get_volume (entry, key, volume, &volume))
             volume_controller_update (entry->role, volume);
     }
@@ -564,8 +564,8 @@ entry_list_free (gpointer data)
 
 N_PLUGIN_LOAD (plugin)
 {
-    NCore     *core    = NULL;
-    NProplist *params  = NULL;
+    NCore           *core    = NULL;
+    const NProplist *params  = NULL;
 
     core = n_plugin_get_core (plugin);
     context = n_core_get_context (core);
@@ -577,14 +577,13 @@ N_PLUGIN_LOAD (plugin)
 
     /* load the stream restore roles we are interested in. */
 
-    params = (NProplist*) n_plugin_get_params (plugin);
+    params = n_plugin_get_params (plugin);
     n_proplist_foreach (params, volume_add_role_key_cb, NULL);
 
     /* connect to the init done hook to query the initial values for
        roles. */
 
-    (void) n_core_connect (core, N_CORE_HOOK_INIT_DONE, 0,
-        init_done_cb, plugin);
+    n_core_connect (core, N_CORE_HOOK_INIT_DONE, 0, init_done_cb, plugin);
 
     /* listen to the context value changes */
 
@@ -598,8 +597,9 @@ N_PLUGIN_LOAD (plugin)
 }
 
 static void
-transform_entry_unsubscribe_free (transform_entry *entry)
+transform_entry_unsubscribe_free (gpointer data)
 {
+    transform_entry *entry = data;
     volume_controller_unsubscribe (entry->src);
     transform_entry_free (entry);
 }
@@ -614,7 +614,7 @@ N_PLUGIN_UNLOAD (plugin)
     }
     if (transform_entries) {
         volume_controller_set_subscribe_cb (NULL, NULL);
-        g_list_free_full (transform_entries, (GDestroyNotify) transform_entry_unsubscribe_free);
+        g_list_free_full (transform_entries, transform_entry_unsubscribe_free);
         transform_entries = NULL;
     }
 
