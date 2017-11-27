@@ -239,7 +239,7 @@ n_core_open_plugin (NCore *core, const char *plugin_name)
     plugin->core   = core;
     plugin->params = n_core_load_params (core, plugin_name);
 
-    N_DEBUG (LOG_CAT "opened plugin '%s'", plugin_name);
+    N_DEBUG (LOG_CAT "opened plugin '%s' (%s)", plugin->get_name (), filename);
 
     g_free (full_path);
     g_free (filename);
