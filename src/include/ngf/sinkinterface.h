@@ -81,6 +81,18 @@ typedef struct _NSinkInterfaceDecl
     void (*stop)       (NSinkInterface *iface, NRequest *request);
 } NSinkInterfaceDecl;
 
+/** Stores userdata for the sink interface
+ * @param iface NSinkInterface structure
+ * @param userdata Interface userdata to store
+ */
+void    n_sink_interface_set_userdata (NSinkInterface *iface, void *userdata);
+
+/** Returns userdata stored to the sink interface
+ * @param iface NSinkInterface structure
+ * @return Userdata for the interface
+ */
+void*   n_sink_interface_get_userdata (NSinkInterface *iface);
+
 /** Get core to which interface is associated to
  * @param iface NSinkInterface structure
  * @return NCore structure

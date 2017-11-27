@@ -78,3 +78,19 @@ n_sink_interface_fail (NSinkInterface *iface, NRequest *request)
 
     n_core_fail_sink (iface->core, iface, request);
 }
+
+void
+n_sink_interface_set_userdata (NSinkInterface *iface, void *userdata)
+{
+    g_assert (iface);
+
+    iface->userdata = userdata;
+}
+
+void*
+n_sink_interface_get_userdata (NSinkInterface *iface)
+{
+    g_assert (iface);
+
+    return iface->userdata;
+}
