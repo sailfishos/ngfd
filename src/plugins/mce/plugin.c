@@ -28,6 +28,8 @@
 #define LOG_CAT "mce: "
 #define MCE_KEY "plugin.mce.data"
 
+#define MCE_LED_PATTERN_KEY "mce.led_pattern"
+
 N_PLUGIN_NAME        ("mce")
 N_PLUGIN_VERSION     ("0.1")
 N_PLUGIN_DESCRIPTION ("MCE plugin for handling backlight and led actions")
@@ -40,19 +42,6 @@ typedef struct _MceData
 } MceData;
 
 static GList *active_events;
-
-static void
-backlight_on (NCore *core)
-{
-    n_dbus_async_call (core,
-                       NULL,
-                       NULL,
-                       DBUS_BUS_SYSTEM,
-                       MCE_SERVICE,
-                       MCE_REQUEST_PATH,
-                       MCE_REQUEST_IF,
-                       MCE_DISPLAY_ON_REQ);
-}
 
 static gboolean
 toggle_pattern (NCore *core, const char *pattern, gboolean activate)
@@ -130,9 +119,8 @@ mce_sink_can_handle (NSinkInterface *iface, NRequest *request)
     (void) iface;
     const NProplist *props = n_request_get_properties (request);
 
-    if (n_proplist_has_key (props, "mce.backlight_on") || n_proplist_has_key (props, "mce.led_pattern")) {
+    if (n_proplist_has_key (props, MCE_LED_PATTERN_KEY))
         return TRUE;
-    }
 
     return FALSE;
 }
@@ -166,10 +154,7 @@ mce_sink_play (NSinkInterface *iface, NRequest *request)
 
     core = n_sink_interface_get_core (iface);
 
-    if (n_proplist_get_bool (props, "mce.backlight_on"))
-        backlight_on (core);
-
-    pattern = n_proplist_get_string (props, "mce.led_pattern");
+    pattern = n_proplist_get_string (props, MCE_LED_PATTERN_KEY);
     if (pattern != NULL) {
         data->pattern = g_strdup (pattern);
         if (toggle_pattern (core, pattern, TRUE)) {
