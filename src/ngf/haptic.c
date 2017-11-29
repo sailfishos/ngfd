@@ -1,10 +1,9 @@
-
 /*
  * ngfd - Non-graphic feedback daemon
  * Haptic feedback support functions
  *
- * Copyright (C) 2014 Jolla Ltd.
- * Contact: Thomas Perl <thomas.perl@jolla.com>
+ * Copyright (C) 2014,2017 Jolla Ltd.
+ * Contact: Juho Hämäläinen <juho.hamalainen@jolla.com>
  *
  * Based on code from the ffmemless plugin:
  * Copyright (C) 2013 Jolla Oy.
@@ -26,8 +25,10 @@
  */
 
 
-#include <ngf/haptic.h>
 #include <string.h>
+#include <ngf/haptic.h>
+#include "core-internal.h"
+#include "haptic-internal.h"
 
 #define LOG_CAT "haptic: "
 
@@ -35,16 +36,120 @@
 #define CONTEXT_VIBRA_LEVEL     "profile.current.touchscreen.vibration.level"
 #define CONTEXT_CALL_STATE      "call_state.mode"
 
+struct NHaptic {
+    NCore      *core;
+    gboolean    call_active;
+    int         vibra_level;
+    gboolean    alert_enabled;
+};
+
+static void
+call_state_changed_cb (NContext *context,
+                       const char *key,
+                       const NValue *old_value,
+                       const NValue *new_value,
+                       void *userdata)
+{
+    NHaptic    *haptic = userdata;
+    const char *state;
+
+    (void) context;
+    (void) key;
+    (void) old_value;
+
+    if ((state = n_value_get_string (new_value)) &&
+        !strcmp (state, "active"))
+        haptic->call_active = TRUE;
+    else
+        haptic->call_active = FALSE;
+}
+
+static void
+vibra_level_changed_cb (NContext *context,
+                        const char *key,
+                        const NValue *old_value,
+                        const NValue *new_value,
+                        void *userdata)
+{
+    NHaptic *haptic = userdata;
+
+    (void) context;
+    (void) key;
+    (void) old_value;
+
+    haptic->vibra_level = n_value_get_int (new_value);
+}
+
+static void
+alert_enabled_changed_cb (NContext *context,
+                          const char *key,
+                          const NValue *old_value,
+                          const NValue *new_value,
+                          void *userdata)
+{
+    NHaptic *haptic = userdata;
+
+    (void) context;
+    (void) key;
+    (void) old_value;
+
+    haptic->alert_enabled = n_value_get_bool (new_value);
+}
+
+NHaptic*
+n_haptic_new (NCore *core)
+{
+    NHaptic      *haptic;
+    NContext     *context;
+    const NValue *alert_enabled;
+    const NValue *vibra_level;
+    const NValue *call_state;
+    const char   *call_state_str;
+
+    haptic = g_new0 (NHaptic, 1);
+    haptic->core = core;
+    context = n_core_get_context (core);
+
+    n_context_subscribe_value_change (context, CONTEXT_CALL_STATE, call_state_changed_cb, haptic);
+    n_context_subscribe_value_change (context, CONTEXT_VIBRA_LEVEL, vibra_level_changed_cb, haptic);
+    n_context_subscribe_value_change (context, CONTEXT_ALERT_ENABLED, alert_enabled_changed_cb, haptic);
+
+    if ((call_state = n_context_get_value (context, CONTEXT_CALL_STATE))) {
+        if ((call_state_str = n_value_get_string (call_state)) &&
+            !strcmp (call_state_str, "active"))
+            haptic->call_active = TRUE;
+    }
+
+    if ((vibra_level = n_context_get_value (context, CONTEXT_VIBRA_LEVEL)))
+        haptic->vibra_level = n_value_get_int (vibra_level);
+
+    if ((alert_enabled = n_context_get_value (context, CONTEXT_ALERT_ENABLED)))
+        haptic->alert_enabled = n_value_get_bool (alert_enabled);
+
+    return haptic;
+}
+
+void
+n_haptic_free (NHaptic *haptic)
+{
+    NContext *context;
+
+    context = n_core_get_context (haptic->core);
+
+    n_context_unsubscribe_value_change (context, CONTEXT_CALL_STATE, call_state_changed_cb);
+    n_context_unsubscribe_value_change (context, CONTEXT_VIBRA_LEVEL, vibra_level_changed_cb);
+    n_context_unsubscribe_value_change (context, CONTEXT_ALERT_ENABLED, alert_enabled_changed_cb);
+
+    g_free (haptic);
+}
+
 int
 n_haptic_can_handle (NSinkInterface *iface, NRequest *request)
 {
     NCore           *core = n_sink_interface_get_core (iface);
-    NContext        *context = n_core_get_context (core);
+    NHaptic         *haptic = core->haptic;
     const NEvent    *event = n_request_get_event (request);
     const NProplist *props = n_request_get_properties (request);
-    const NValue    *alert_enabled = NULL;
-    const NValue    *touch_level = NULL;
-    const NValue    *call_state = NULL;
     const char      *haptic_type = NULL;
     const char      *event_name = n_request_get_name (request);
     int              haptic_class;
@@ -56,19 +161,14 @@ n_haptic_can_handle (NSinkInterface *iface, NRequest *request)
         return FALSE;
     }
 
-    haptic_type = n_proplist_get_string (props, HAPTIC_TYPE_KEY);
+    haptic_type = n_proplist_get_string (props, N_HAPTIC_TYPE_KEY);
 
     if (haptic_type == NULL) {
         N_DEBUG (LOG_CAT "No, haptic type not defined.");
         return FALSE;
     }
 
-    call_state = n_context_get_value (context, CONTEXT_CALL_STATE);
-
-    if (call_state == NULL)
-        N_WARNING (LOG_CAT "No value for " CONTEXT_CALL_STATE "!");
-
-    if (call_state && !strcmp (n_value_get_string (call_state), "active")) {
+    if (haptic->call_active) {
         N_DEBUG (LOG_CAT "No, should not vibrate during call.");
         return FALSE;
     }
@@ -76,31 +176,21 @@ n_haptic_can_handle (NSinkInterface *iface, NRequest *request)
     haptic_class = n_haptic_class_for_type (haptic_type);
 
     switch (haptic_class) {
-        case HAPTIC_CLASS_TOUCH:
-            touch_level = n_context_get_value (context, CONTEXT_VIBRA_LEVEL);
-
-            if (touch_level == NULL)
-                N_WARNING (LOG_CAT "No value for " CONTEXT_VIBRA_LEVEL "!");
-
-            if (n_value_get_int (touch_level) == 0) {
+        case N_HAPTIC_CLASS_TOUCH:
+            if (haptic->vibra_level == 0) {
                 N_DEBUG (LOG_CAT "No, touch vibra level at 0.");
                 return FALSE;
             }
             break;
 
-        case HAPTIC_CLASS_ALARM:
-            alert_enabled = n_context_get_value (context, CONTEXT_ALERT_ENABLED);
-
-            if (alert_enabled == NULL)
-                N_WARNING (LOG_CAT "No value for " CONTEXT_ALERT_ENABLED "!");
-
-            if (!n_value_get_bool (alert_enabled)) {
+        case N_HAPTIC_CLASS_EVENT:
+            if (!haptic->alert_enabled) {
                 N_DEBUG (LOG_CAT "No, vibration disabled in profile.");
                 return FALSE;
             }
             break;
 
-        case HAPTIC_CLASS_UNDEFINED:
+        case N_HAPTIC_CLASS_UNDEFINED:
             /* fall through */
         default:
             N_DEBUG (LOG_CAT "No, unknown haptic type.");
@@ -116,21 +206,22 @@ int
 n_haptic_class_for_type (const char *haptic_type)
 {
     if (!haptic_type)
-        return HAPTIC_CLASS_UNDEFINED;
-    else if (!strcmp (haptic_type, HAPTIC_TYPE_TOUCH))
-        return HAPTIC_CLASS_TOUCH;
-    else if (!strcmp (haptic_type, HAPTIC_TYPE_SHORT))
-        return HAPTIC_CLASS_TOUCH;
-    else if (!strcmp (haptic_type, HAPTIC_TYPE_STRONG))
-        return HAPTIC_CLASS_TOUCH;
-    else if (!strcmp (haptic_type, HAPTIC_TYPE_ALARM))
-        return HAPTIC_CLASS_ALARM;
-    else if (!strcmp (haptic_type, HAPTIC_TYPE_NOTICE))
-        return HAPTIC_CLASS_ALARM;
-    else if (!strcmp (haptic_type, HAPTIC_TYPE_MESSAGE))
-        return HAPTIC_CLASS_ALARM;
-    else if (!strcmp (haptic_type, HAPTIC_TYPE_RINGTONE))
-        return HAPTIC_CLASS_ALARM;
+        return N_HAPTIC_CLASS_UNDEFINED;
+    else if (!strcmp (haptic_type, N_HAPTIC_TYPE_TOUCH))
+        return N_HAPTIC_CLASS_TOUCH;
+    else if (!strcmp (haptic_type, N_HAPTIC_TYPE_EVENT))
+        return N_HAPTIC_CLASS_EVENT;
 
-    return HAPTIC_CLASS_UNDEFINED;
+    return N_HAPTIC_CLASS_UNDEFINED;
+}
+
+const char*
+n_haptic_effect_for_request (NRequest *request)
+{
+    const NProplist *props;
+
+    g_assert (request);
+    props = n_request_get_properties (request);
+
+    return n_proplist_get_string (props, N_HAPTIC_EFFECT_KEY);
 }

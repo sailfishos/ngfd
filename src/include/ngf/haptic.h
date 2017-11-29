@@ -38,27 +38,44 @@
  * of haptic event it is.
  *
  * Supported type strings are currently:
- *   "alarm" - for most vibration effects
+ *   "event" - for most vibration effects
  *   "touch" - for events that only play when user touches touchscreen.
  *
  * The haptic event type is used to filter out playback in case user has
  * disabled the setting for certain type of haptic feedback.
  */
-#define HAPTIC_TYPE_KEY         "haptic.type"
+#define N_HAPTIC_TYPE_KEY         "haptic.type"
 
-/* Convenience macros for supported haptic types */
-#define HAPTIC_TYPE_TOUCH       "touch"
-#define HAPTIC_TYPE_SHORT       "short"
-#define HAPTIC_TYPE_STRONG      "strong"
-#define HAPTIC_TYPE_ALARM       "alarm"
-#define HAPTIC_TYPE_NOTICE      "notice"
-#define HAPTIC_TYPE_MESSAGE     "message"
-#define HAPTIC_TYPE_RINGTONE    "ringtone"
+#define N_HAPTIC_TYPE_TOUCH       "touch"
+#define N_HAPTIC_TYPE_EVENT       "event"
+
+#define N_HAPTIC_EFFECT_KEY       "haptic.effect"
+
+#define N_HAPTIC_EFFECT_DEFAULT   "default"
+
+/* System-defined haptic effects. Preferably all plugins implementing
+ * haptic functionality should be able to handle all the effects
+ * listed here. Strictly speaking only mandatory one is "default".
+ *
+ * Effects are roughly listed by their invasiveness, top one on the
+ * list is least invasive and last most invasive.
+ *
+ * alarm and ringtone effects should repeat indefinitely.
+ */
+#define N_HAPTIC_EFFECT_TOUCH     "touch"
+#define N_HAPTIC_EFFECT_SHORT     "short"
+#define N_HAPTIC_EFFECT_STRONG    "strong"
+#define N_HAPTIC_EFFECT_LONG      "long"
+#define N_HAPTIC_EFFECT_NOTICE    "notice"
+#define N_HAPTIC_EFFECT_MESSAGE   "message"
+#define N_HAPTIC_EFFECT_ATTENTION "attention"
+#define N_HAPTIC_EFFECT_ALARM     "alarm"
+#define N_HAPTIC_EFFECT_RINGTONE  "ringtone"
 
 /* Supported haptic classes */
-#define HAPTIC_CLASS_UNDEFINED  (0)
-#define HAPTIC_CLASS_TOUCH      (1)
-#define HAPTIC_CLASS_ALARM      (2)
+#define N_HAPTIC_CLASS_UNDEFINED  (0)
+#define N_HAPTIC_CLASS_TOUCH      (1)
+#define N_HAPTIC_CLASS_EVENT      (2)
 
 /**
  * Convenience function to filter haptic depending on settings and call state
@@ -87,5 +104,12 @@ int n_haptic_can_handle (NSinkInterface *iface, NRequest *request);
  * @return Haptic class, or HAPTIC_CLASS_UNDEFINED if type doesn't have a class
  */
 int n_haptic_class_for_type (const char *haptic_type);
+
+/* Get value for haptic.effect from request.
+ *
+ * @param request NRequest struct
+ * @return Haptic effect string or NULL if haptic.effect is not defined
+ */
+const char* n_haptic_effect_for_request (NRequest *request);
 
 #endif /* N_NGF_HAPTIC_H */

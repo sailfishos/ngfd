@@ -13,6 +13,7 @@ ngfd_SOURCES =                \
     core.c                    \
     core-hooks.h              \
     core-hooks.c              \
+    haptic-internal.h         \
     haptic.c                  \
     hook.h                    \
     hook.c                    \

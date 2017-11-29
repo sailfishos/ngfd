@@ -34,6 +34,7 @@
 #include "request-internal.h"
 #include "context-internal.h"
 #include "core-dbus-internal.h"
+#include "haptic-internal.h"
 
 struct _NCore
 {
@@ -55,6 +56,7 @@ struct _NCore
     GHashTable       *event_table;          /* hash table of GList* containing NEvent* for easy lookup */
     GList            *event_list;           /* list of all events */
 
+    NHaptic          *haptic;               /* haptic helper */
     NDBusHelper      *dbus;                 /* dbus helper */
 
     GHashTable       *key_types;
