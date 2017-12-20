@@ -67,6 +67,7 @@ static void       n_core_parse_sink_order       (NCore *core, GKeyFile *keyfile)
 static int        n_core_parse_configuration    (NCore *core);
 static void       n_core_match_event_rule_cb    (const char *key, const NValue *value, gpointer userdata);
 
+static GSList*    tmp_plugin_conf_files;
 
 
 static gchar*
@@ -84,21 +85,17 @@ n_core_get_path (const char *key, const char *default_path)
     return g_strdup (source);
 }
 
-static GSList *plugin_conf_files = NULL;
-
 static GSList*
-n_core_plugin_conf_files (NCore *core)
+n_core_conf_files_from_path (const char *base_path, const char *path)
 {
-    gchar          *conf_path = NULL;
-    GDir           *conf_dir  = NULL;
-    const gchar    *filename  = NULL;
-    gchar          *full_name = NULL;
-    GError         *error     = NULL;
+    GSList         *conf_files  = NULL;
+    gchar          *conf_path   = NULL;
+    GDir           *conf_dir    = NULL;
+    const gchar    *filename    = NULL;
+    gchar          *full_name   = NULL;
+    GError         *error       = NULL;
 
-    if (plugin_conf_files)
-        return plugin_conf_files;
-
-    conf_path = g_build_path (G_DIR_SEPARATOR_S, core->conf_path, PLUGIN_CONF_PATH, NULL);
+    conf_path = g_build_path (G_DIR_SEPARATOR_S, base_path, path, NULL);
     conf_dir  = g_dir_open (conf_path, 0, &error);
 
     if (!conf_dir) {
@@ -109,29 +106,43 @@ n_core_plugin_conf_files (NCore *core)
     }
 
     while ((filename = g_dir_read_name (conf_dir))) {
+        if (!g_str_has_suffix (filename, ".ini"))
+            continue;
+
         full_name = g_build_filename (conf_path, filename, NULL);
 
         if (g_file_test (full_name, G_FILE_TEST_IS_REGULAR))
-            plugin_conf_files = g_slist_append (plugin_conf_files, full_name);
+            conf_files = g_slist_append (conf_files, full_name);
         else
             g_free (full_name);
     }
 
-    if (plugin_conf_files)
-        plugin_conf_files = g_slist_sort (plugin_conf_files, (GCompareFunc) g_strcmp0);
+    if (conf_files)
+        conf_files = g_slist_sort (conf_files, (GCompareFunc) g_strcmp0);
 
     g_free (conf_path);
     g_dir_close (conf_dir);
 
-    return plugin_conf_files;
+    return conf_files;
+}
+
+static GSList*
+n_core_plugin_conf_files (NCore *core)
+{
+    if (tmp_plugin_conf_files)
+        return tmp_plugin_conf_files;
+
+    tmp_plugin_conf_files = n_core_conf_files_from_path (core->conf_path, PLUGIN_CONF_PATH);
+
+    return tmp_plugin_conf_files;
 }
 
 static void
 n_core_plugin_conf_files_done ()
 {
-    if (plugin_conf_files) {
-        g_slist_free_full (plugin_conf_files, g_free);
-        plugin_conf_files = NULL;
+    if (tmp_plugin_conf_files) {
+        g_slist_free_full (tmp_plugin_conf_files, g_free);
+        tmp_plugin_conf_files = NULL;
     }
 }
 
@@ -404,6 +415,8 @@ n_core_initialize (NCore *core)
     NInputInterface **input  = NULL;
     NPlugin          *plugin = NULL;
     GList            *p      = NULL;
+
+    tmp_plugin_conf_files    = NULL;
 
     /* setup hooks */
 
@@ -732,31 +745,24 @@ n_core_parse_events_from_file (NCore *core, const char *filename)
 static int
 n_core_parse_events (NCore *core)
 {
-    gchar         *path       = NULL;
-    DIR           *parent_dir = NULL;
-    struct dirent *walk       = NULL;
+    GSList        *conf_files = NULL;
+    GSList        *i          = NULL;
     gchar         *filename   = NULL;
 
     /* find all the events within the given path */
+    conf_files = n_core_conf_files_from_path (core->conf_path, EVENT_CONF_PATH);
 
-    path = g_build_filename (core->conf_path, EVENT_CONF_PATH, NULL);
-    parent_dir = opendir (path);
-    if (!parent_dir) {
-        N_ERROR (LOG_CAT "failed to open event path '%s'", path);
-        g_free (path);
+    if (!conf_files) {
+        N_ERROR (LOG_CAT "no events defined.");
         return FALSE;
     }
 
-    while ((walk = readdir (parent_dir)) != NULL) {
-        if (walk->d_type & DT_REG) {
-            filename = g_build_filename (path, walk->d_name, NULL);
-            n_core_parse_events_from_file (core, filename);
-            g_free (filename);
-        }
+    for (i = conf_files; i; i = g_slist_next (i)) {
+        filename = i->data;
+        n_core_parse_events_from_file (core, filename);
     }
 
-    closedir (parent_dir);
-    g_free   (path);
+    g_slist_free_full (conf_files, g_free);
 
     return TRUE;
 }
