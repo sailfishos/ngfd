@@ -49,138 +49,137 @@
 #define LOG_CAT "resource: "
 
 N_PLUGIN_NAME        ("resource")
-N_PLUGIN_VERSION     ("0.2")
+N_PLUGIN_VERSION     ("0.3")
 N_PLUGIN_DESCRIPTION ("Resource rules")
 
-enum resource_key_index {
-    RES_AUDIO   = 0,
-    RES_VIBRA   = 1,
-    RES_LEDS    = 2,
-    RES_BLIGHT  = 3,
-    RES_COUNT
+#define RESOURCE_KEY_PREFIX "media."
+
+struct resource_def {
+    char       *key;
+    char       *type;
+    gboolean    enabled_default;
+    gboolean    enabled;
 };
 
-static const char *resource_keys[RES_COUNT] = {
-    [RES_AUDIO] = "media.audio",
-    [RES_VIBRA] = "media.vibra",
-    [RES_LEDS]  = "media.leds",
-    [RES_BLIGHT] = "media.backlight"
-};
+static GSList *def_list;
 
-#define ARRAY_SIZE(x) (sizeof ((x)) / sizeof ((x)[0]))
-
-static gboolean        resource_map_enabled = FALSE;
-static NSinkInterface *sink_map[RES_COUNT];
-
-static NSinkInterface*
-lookup_sink_from_key (NCore *core, const char *key)
+static void
+lookup_types_from_keys (const char *key, const NValue *value, gpointer userdata)
 {
-    NSinkInterface **sink = NULL;
+    struct resource_def *resdef;
+    const char          *value_str;
 
-    if (!key)
-        return NULL;
+    (void) userdata;
 
-    for (sink = n_core_get_sinks (core); *sink; ++sink) {
-        if (g_str_equal (n_sink_interface_get_name (*sink), key))
-            return *sink;
-    }
+    if (!key || !value)
+        return;
 
-    return NULL;
+    if (!g_str_has_prefix (key, RESOURCE_KEY_PREFIX) ||
+        strlen (key) <= strlen (RESOURCE_KEY_PREFIX))
+        return;
+
+    resdef          = g_new0 (struct resource_def, 1);
+    resdef->key     = g_strdup (key);
+    resdef->type    = g_strdup (key + strlen (RESOURCE_KEY_PREFIX));
+
+    value_str = n_value_get_string (value);
+    if (g_strcmp0 (value_str, "0")     == 0 ||
+        g_strcmp0 (value_str, "false") == 0 ||
+        g_strcmp0 (value_str, "False") == 0 ||
+        g_strcmp0 (value_str, "FALSE") == 0)
+        resdef->enabled_default = FALSE;
+    else
+        resdef->enabled_default = TRUE;
+
+    def_list = g_slist_append (def_list, resdef);
 }
 
 static void
-init_done_cb (NHook *hook, void *data, void *userdata)
+resource_def_free_cb (gpointer data)
 {
-    (void) hook;
-    (void) data;
+    struct resource_def *resdef = data;
 
-    const char *key = NULL;
-    unsigned int i = 0;
-    gboolean has_one = FALSE;
-
-    NPlugin   *plugin = (NPlugin*) userdata;
-    NCore     *core   = n_plugin_get_core   (plugin);
-    NProplist *params = (NProplist*) n_plugin_get_params (plugin);
-
-    if (!params || n_proplist_size (params) == 0) {
-        N_WARNING (LOG_CAT "filtering sinks by resources disabled, no mapping "
-                           "defined from flag to sink.");
-        return;
-    }
-
-    for (i = 0; i < ARRAY_SIZE (resource_keys); ++i) {
-        key = n_proplist_get_string (params, resource_keys[i]);
-        sink_map[i] = lookup_sink_from_key (core, key);
-
-        if (sink_map[i])
-            has_one = TRUE;
-    }
-
-    if (has_one)
-        resource_map_enabled = TRUE;
+    g_free (resdef->key);
+    g_free (resdef->type);
+    g_free (resdef);
 }
 
 static void
 filter_sinks_cb (NHook *hook, void *data, void *userdata)
 {
-    NProplist                *props  = NULL;
-    NCoreHookFilterSinksData *filter = (NCoreHookFilterSinksData*) data;
+    const NProplist          *props;
+    NSinkInterface          **sink;
+    GSList                   *i;
+    struct resource_def      *resdef;
+    gboolean                  apply_filter = FALSE;
+    NCore                    *core         = userdata;
+    NCoreHookFilterSinksData *filter       = data;
 
     (void) hook;
-    (void) userdata;
 
-    unsigned int index;
-    int force_enabled = 0;
-    int enabled[RES_COUNT];
-
-    if (!resource_map_enabled) {
-        N_DEBUG (LOG_CAT "filtering sinks by resource is disabled.");
+    if (!def_list)
         return;
-    }
 
     N_DEBUG (LOG_CAT "filter sinks for request '%s'",
-        n_request_get_name (filter->request));
+                     n_request_get_name (filter->request));
 
-    memset (enabled, 0, sizeof(enabled));
+    props = n_request_get_properties (filter->request);
 
-    props = (NProplist*) n_request_get_properties (filter->request);
+    for (i = def_list; i; i = g_slist_next (i)) {
+        resdef = i->data;
+        resdef->enabled = resdef->enabled_default;
 
-    for (index = 0; index < ARRAY_SIZE(enabled); index++) {
-        if (n_proplist_has_key (props, resource_keys[index])) {
-            force_enabled = 1;
-            enabled[index] = n_proplist_get_bool (props, resource_keys[index]);
-        }
+        if (n_proplist_has_key (props, resdef->key))
+            resdef->enabled = n_proplist_get_bool (props, resdef->key);
+
+        if (!resdef->enabled)
+            apply_filter = TRUE;
+
+        N_DEBUG (LOG_CAT "resource type '%s' %s",
+                         resdef->type,
+                         resdef->enabled ? "enabled" : "disabled");
     }
 
-    for (index = 0; index < ARRAY_SIZE(enabled); index++) {
+    if (apply_filter) {
+        for (i = def_list; i; i = g_slist_next (i)) {
+            resdef = i->data;
 
-        if (!sink_map[index])
-            continue;
+            if (resdef->enabled)
+                continue;
 
-        N_DEBUG (LOG_CAT "resource %s%s for '%s' with sink '%s'",
-            force_enabled ? "forced " : "",
-            force_enabled && !enabled[index] ? "disabled" : "enabled",
-            resource_keys[index],
-            n_sink_interface_get_name (sink_map[index]));
-
-        if (force_enabled && !enabled[index])
-            filter->sinks = g_list_remove (filter->sinks, sink_map[index]);
+            for (sink = n_core_get_sinks (core); *sink; ++sink) {
+                if (g_str_equal (n_sink_interface_get_type (*sink), resdef->type)) {
+                    N_DEBUG (LOG_CAT "filter sink '%s' (%s = false)",
+                                     n_sink_interface_get_name (*sink),
+                                     resdef->key);
+                    filter->sinks = g_list_remove (filter->sinks, *sink);
+                }
+            }
+        }
     }
 }
 
 N_PLUGIN_LOAD (plugin)
 {
-    NCore *core = NULL;
+    NCore           *core;
+    const NProplist *params;
+    def_list = NULL;
 
-    /* connect to the init done and filter sinks hook. */
+    core    = n_plugin_get_core (plugin);
+    params  = n_plugin_get_params (plugin);
 
-    core = n_plugin_get_core (plugin);
+    n_proplist_foreach (params, lookup_types_from_keys, NULL);
 
-    (void) n_core_connect (core, N_CORE_HOOK_INIT_DONE, 0,
-        init_done_cb, plugin);
+    if (!def_list) {
+        N_WARNING (LOG_CAT "filtering sinks by resources disabled, no mapping "
+                           "defined from flag to sink type.");
+        return FALSE;
+    }
+
+    /* connect to filter sinks hook. */
 
     (void) n_core_connect (core, N_CORE_HOOK_FILTER_SINKS, 0,
-        filter_sinks_cb, plugin);
+        filter_sinks_cb, core);
 
     return TRUE;
 }
@@ -188,4 +187,7 @@ N_PLUGIN_LOAD (plugin)
 N_PLUGIN_UNLOAD (plugin)
 {
     (void) plugin;
+
+    if (def_list)
+        g_slist_free_full (def_list, resource_def_free_cb);
 }
