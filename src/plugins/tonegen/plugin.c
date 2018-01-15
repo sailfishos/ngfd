@@ -307,6 +307,7 @@ N_PLUGIN_LOAD (plugin)
 {
     static const NSinkInterfaceDecl decl = {
         .name       = "tonegen",
+        .type       = N_SINK_INTERFACE_TYPE_AUDIO,
         .initialize = tonegen_sink_initialize,
         .shutdown   = tonegen_sink_shutdown,
         .can_handle = tonegen_sink_can_handle,

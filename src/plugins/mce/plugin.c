@@ -203,6 +203,7 @@ N_PLUGIN_LOAD (plugin)
 
     static const NSinkInterfaceDecl decl = {
         .name       = "mce",
+        .type       = N_SINK_INTERFACE_TYPE_LEDS,
         .initialize = NULL,
         .shutdown   = mce_sink_shutdown,
         .can_handle = mce_sink_can_handle,

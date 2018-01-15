@@ -646,6 +646,7 @@ N_PLUGIN_LOAD(plugin)
 
 	static const NSinkInterfaceDecl decl = {
 		.name       = "ffmemless",
+		.type       = N_SINK_INTERFACE_TYPE_VIBRATOR,
 		.initialize = ffm_sink_initialize,
 		.shutdown   = ffm_sink_shutdown,
 		.can_handle = ffm_sink_can_handle,

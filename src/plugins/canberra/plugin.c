@@ -267,6 +267,7 @@ N_PLUGIN_LOAD (plugin)
 
     static const NSinkInterfaceDecl decl = {
         .name       = "canberra",
+        .type       = N_SINK_INTERFACE_TYPE_AUDIO,
         .initialize = canberra_sink_initialize,
         .shutdown   = canberra_sink_shutdown,
         .can_handle = canberra_sink_can_handle,
