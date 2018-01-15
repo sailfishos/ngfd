@@ -28,11 +28,19 @@ typedef struct _NSinkInterface NSinkInterface;
 #include <ngf/request.h>
 #include <ngf/core.h>
 
+#define N_SINK_INTERFACE_TYPE_AUDIO     "audio"
+#define N_SINK_INTERFACE_TYPE_VIBRATOR  "vibra"
+#define N_SINK_INTERFACE_TYPE_LEDS      "leds"
+
 /** Interface declaration structure. */
 typedef struct _NSinkInterfaceDecl
 {
     /** Name of the interface. */
     const char *name;
+
+    /** Type of the interface.
+     * Common types are defined as macros. */
+    const char *type;
 
     /** Initialization function. Called when interface is loaded.
      * @param iface NSinkInterface structure
@@ -104,6 +112,12 @@ NCore*      n_sink_interface_get_core (NSinkInterface *iface);
  * @return Name of the interface
  */
 const char* n_sink_interface_get_name (NSinkInterface *iface);
+
+/** Get interface type
+ * @param iface NSinkInterface structure
+ * @return Type of the interface
+ */
+const char* n_sink_interface_get_type (NSinkInterface *iface);
 
 /** Report that sink will resync to other sinks resynchronize requests.
  * @param iface NSinkInterface structure

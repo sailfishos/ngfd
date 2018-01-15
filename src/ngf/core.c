@@ -555,6 +555,8 @@ n_core_shutdown (NCore *core)
             if ((*sink)->funcs.shutdown)
                 (*sink)->funcs.shutdown (*sink);
         }
+        g_free (core->sinks);
+        core->sinks = NULL;
     }
 
     if (core->plugins) {
@@ -589,6 +591,7 @@ n_core_register_sink (NCore *core, const NSinkInterfaceDecl *iface)
     NSinkInterface *sink = NULL;
     sink = g_new0 (NSinkInterface, 1);
     sink->name  = iface->name;
+    sink->type  = iface->type;
     sink->core  = core;
     sink->funcs = *iface;
 

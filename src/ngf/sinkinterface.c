@@ -34,6 +34,12 @@ n_sink_interface_get_name (NSinkInterface *iface)
     return (iface != NULL) ? (const char*) iface->name : NULL;
 }
 
+const char*
+n_sink_interface_get_type (NSinkInterface *iface)
+{
+    return iface->type;
+}
+
 void
 n_sink_interface_set_resync_on_master (NSinkInterface *iface, NRequest *request)
 {

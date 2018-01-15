@@ -31,6 +31,7 @@
 struct _NSinkInterface
 {
     const char         *name;           /* sink interface name */
+    const char         *type;           /* sink interface type */
     NSinkInterfaceDecl funcs;           /* functions for the interface */
     NCore              *core;
     void               *userdata;
