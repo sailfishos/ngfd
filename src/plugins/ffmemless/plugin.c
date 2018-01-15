@@ -37,11 +37,8 @@
 #define FFM_SYSTEM_CONFIG_KEY	"system_effects_env"
 #define FFM_DEVFILE_KEY		"device_file_path"
 #define FFM_EFFECTLIST_KEY	"supported_effects"
-#define FFM_EFFECT_KEY		"ffmemless.effect"
 #define FFM_SOUND_REPEAT_KEY	"sound.repeat"
-#define FFM_EFFECT_PREFIX	"NGF_"
 #define FFM_MAX_PARAM_LEN	80
-#define FFM_DEFAULT_EFFECT	"NGF_DEFAULT"
 
 #define NGF_DEFAULT_TYPE	FF_RUMBLE
 #define NGF_DEFAULT_DURATION	240
@@ -241,13 +238,13 @@ static int ffm_setup_default_effect(GHashTable *effects, int dev_fd)
 
 	memset(&ff, 0, sizeof(struct ff_effect));
 	data = (struct ffm_effect_data *)g_hash_table_lookup(effects,
-							FFM_DEFAULT_EFFECT);
+							N_HAPTIC_EFFECT_DEFAULT);
 	if (!data) {
 		data = g_new(struct ffm_effect_data, 1);
 		data->id = -1;
 		data->id = 1;
 		ff.id = -1;
-		g_hash_table_insert(effects, g_strdup(FFM_DEFAULT_EFFECT),
+		g_hash_table_insert(effects, g_strdup(N_HAPTIC_EFFECT_DEFAULT),
 				data);
 	} else {
 		ff.id = data->id;
@@ -258,11 +255,11 @@ static int ffm_setup_default_effect(GHashTable *effects, int dev_fd)
 	ff.u.rumble.strong_magnitude = NGF_DEFAULT_RMAGNITUDE;
 	ff.u.rumble.weak_magnitude = NGF_DEFAULT_RMAGNITUDE;
 	if (ffmemless_upload_effect(&ff, dev_fd)) {
-		N_DEBUG (LOG_CAT "%s effect load failed", FFM_DEFAULT_EFFECT);
+		N_DEBUG (LOG_CAT "%s effect load failed", N_HAPTIC_EFFECT_DEFAULT);
 		return -1;
 	}
 	data->id = ff.id;
-	N_DEBUG (LOG_CAT "Added effect %s, id %d", FFM_DEFAULT_EFFECT, ff.id);
+	N_DEBUG (LOG_CAT "Added effect %s, id %d", N_HAPTIC_EFFECT_DEFAULT, ff.id);
 	return 0;
 }
 
@@ -547,30 +544,10 @@ static void ffm_sink_shutdown(NSinkInterface *iface)
 
 static int ffm_sink_can_handle(NSinkInterface *iface, NRequest *request)
 {
-	const NProplist *props = n_request_get_properties (request);
-	const gchar *key;
-
 	// Filter based on settings and call state
-	if (!n_haptic_can_handle (iface, request)) {
-		N_DEBUG (LOG_CAT "Event filtered by haptic rules");
-		return FALSE;
-	}
-
-	N_DEBUG (LOG_CAT "can handle %s?", n_request_get_name(request));
-
-	key = n_proplist_get_string(props, FFM_EFFECT_KEY);
-	if (key == NULL) {
-		N_DEBUG (LOG_CAT "No, effect key missing");
-		return FALSE;
-	}
-
-	if (n_proplist_has_key (props, FFM_EFFECT_KEY)) {
-		N_DEBUG (LOG_CAT "yes");
-		return TRUE;
-	}
-	N_DEBUG (LOG_CAT "no, missing effect for this event");
-	return FALSE;
+	return n_haptic_can_handle (iface, request);
 }
+
 static int ffm_sink_prepare(NSinkInterface *iface, NRequest *request)
 {
 	const NProplist *props = n_request_get_properties (request);
@@ -578,22 +555,16 @@ static int ffm_sink_prepare(NSinkInterface *iface, NRequest *request)
 	struct ffm_effect_data *copy;
 	gboolean repeat;
 	const gchar *key;
-	(void) iface;
-	(void) request;
 
 	N_DEBUG (LOG_CAT "prepare");
 
-	key = n_proplist_get_string(props, FFM_EFFECT_KEY);
-	if (key == NULL) {
-		N_DEBUG (LOG_CAT "no effect key found for this event");
-		return FALSE;
-	}
+	key = n_haptic_effect_for_request (request);
 
 	data = g_hash_table_lookup(ffm.effects, key);
 
 	/* Fall back to default effect, if the key did not match our effects */
 	if (data == NULL)
-		data = g_hash_table_lookup(ffm.effects, FFM_DEFAULT_EFFECT);
+		data = g_hash_table_lookup(ffm.effects, N_HAPTIC_EFFECT_DEFAULT);
 
 	/* creating copy of the data as we need to alter it for this event */
 	copy = g_new(struct ffm_effect_data, 1);
