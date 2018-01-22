@@ -126,6 +126,7 @@ fi
 %{_libdir}/ngf/libngfd_ffmemless.so
 %{_libdir}/ngf/libngfd_devicelock.so
 %{_libdir}/ngf/libngfd_route.so
+%{_libdir}/ngf/libngfd_null.so
 %{_libdir}/systemd/user/ngfd.service
 %{_libdir}/systemd/user/user-session.target.wants/ngfd.service
 %{_libdir}/systemd/user/actdead-session.target.wants/ngfd.service
