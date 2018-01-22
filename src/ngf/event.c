@@ -2,7 +2,9 @@
  * ngfd - Non-graphic feedback daemon
  *
  * Copyright (C) 2010 Nokia Corporation.
+ *               2018 Jolla Ltd.
  * Contact: Xun Chen <xun.chen@nokia.com>
+ *          Juho Hämäläinen <juho.hamalainen@jolla.com>
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -22,89 +24,24 @@
 #include <string.h>
 #include <glib.h>
 #include <ngf/log.h>
+#include "eventrule-internal.h"
 #include "event-internal.h"
 
 #define LOG_CAT "event: "
 
-#define GROUP_ENTRY_DEFINE  "%define "
-#define GROUP_ENTRY_INCLUDE "%include"
 
-static int        n_event_parse_rule        (const char *rule, NProplist *proplist);
-static int        n_event_parse_group_title (const char *value, gchar **out_title,
-                                             NProplist **out_rules);
-static NProplist* n_event_parse_properties  (GKeyFile *keyfile, const char *group,
-                                             GHashTable *key_types, GHashTable *defines);
-static NEvent*    n_event_parse_group       (GKeyFile *keyfile, const char *group,
-                                             GHashTable *key_types, GHashTable *defines);
 
-static const char* strip_prefix             (const char *group, const char *prefix);
+static int      event_parse_group_title (const char *value, gchar **out_title,
+                                         int *out_priority, GSList **out_rules);
+static void     rule_match_cb           (gpointer data, gpointer userdata);
+static void     dump_event_rules_cb     (gpointer data, gpointer userdata);
+static void     merge_rules             (GSList **to, GSList *from);
 
 
 NEvent*
 n_event_new ()
 {
     return g_new0 (NEvent, 1);
-}
-
-NEvent*
-n_event_new_from_group (NCore *core, GKeyFile *keyfile,
-                        const char *group, GHashTable *defines)
-{
-    g_assert (keyfile != NULL);
-    g_assert (group != NULL);
-
-    return n_event_parse_group (keyfile, group, core->key_types, defines);
-}
-
-static const char*
-strip_prefix (const char *group, const char *prefix)
-{
-    const char *name = NULL;
-    const char *tmp;
-    size_t sep;
-
-    if (!g_str_has_prefix (group, prefix))
-        goto done;
-
-    tmp = group + strlen (prefix);
-    if (strlen (tmp) < 1)
-        goto done;
-
-    sep = strspn (tmp, " ");
-    tmp = tmp + sep;
-
-    if (strlen (tmp) < 1)
-        goto done;
-
-    name = tmp;
-
-done:
-    return name;
-}
-
-void
-n_event_parse_defines (NCore *core, GKeyFile *keyfile,
-                       const char *group, GHashTable **defines)
-{
-    NProplist  *proplist = NULL;
-    const char *name;
-    char *key;
-
-    g_assert (core);
-    g_assert (keyfile);
-    g_assert (group);
-    g_assert (defines);
-
-    if ((name = strip_prefix (group, GROUP_ENTRY_DEFINE))) {
-        if (!*defines)
-            *defines = g_hash_table_new_full (g_str_hash, g_str_equal,
-                                              g_free, (GDestroyNotify) n_proplist_free);
-
-        proplist = n_event_parse_properties (keyfile, group, core->key_types, NULL);
-        key = g_strdup (name);
-        g_strstrip (key);
-        g_hash_table_insert (*defines, key, proplist);
-    }
 }
 
 void
@@ -119,47 +56,162 @@ n_event_free (NEvent *event)
     g_free (event);
 }
 
-static int
-n_event_parse_rule (const char *rule, NProplist *proplist)
+guint
+n_event_rules_size (const NEvent *event)
 {
-    g_assert (rule != NULL);
-    g_assert (proplist != NULL);
+    if (!event)
+        return 0;
 
-    gchar **items = NULL;
+    return g_slist_length (event->rules);
+}
 
-    items = g_strsplit (rule, "=", 2);
-    if (items[1] == NULL) {
-        g_strfreev (items);
-        return FALSE;
+struct rule_match_data {
+    NEvent  *event_b;
+    gboolean equals;
+};
+
+static void
+rule_match_cb (gpointer data, gpointer userdata)
+{
+    NEventRule             *rule_a = data;
+    struct rule_match_data *match_data = userdata;
+    NEventRule             *rule_b;
+    GSList                 *i_b;
+    gboolean                match = FALSE;
+
+    if (!match_data->equals)
+        return;
+
+    for (i_b = match_data->event_b->rules; i_b; i_b = g_slist_next (i_b)) {
+        rule_b = i_b->data;
+
+        if (n_event_rule_equal (rule_a, rule_b)) {
+            match = TRUE;
+            break;
+        }
     }
 
-    g_strstrip (items[0]);
-    g_strstrip (items[1]);
-    n_proplist_set_string (proplist, items[0], items[1]);
-    g_strfreev (items);
+    match_data->equals = match;
+}
 
-    return TRUE;
+int
+n_event_rules_equal (NEvent *a, NEvent *b)
+{
+    struct rule_match_data match_data;
+
+    if (!a->rules && !b->rules)
+        return TRUE;
+
+    if (n_event_rules_size (a) != n_event_rules_size (b))
+        return FALSE;
+
+    match_data.event_b = b;
+    match_data.equals  = TRUE;
+
+    g_slist_foreach (a->rules, rule_match_cb, &match_data);
+
+    return match_data.equals;
+}
+
+static void
+dump_event_rules_cb (gpointer data, gpointer userdata)
+{
+    const NEventRule *rule         = data;
+    const char       *debug_prefix = userdata;
+
+    n_event_rule_dump (rule, debug_prefix);
+}
+
+void
+n_event_rules_dump (NEvent *event, const char *debug_prefix)
+{
+    if (event && n_log_get_level() <= N_LOG_LEVEL_DEBUG)
+        g_slist_foreach (event->rules, dump_event_rules_cb, (gpointer) debug_prefix);
+}
+
+static void
+merge_rules (GSList **to, GSList *from)
+{
+    GSList     *i_to;
+    GSList     *i_from;
+    NEventRule *rule;
+    gboolean    new_entry;
+
+    for (i_from = from; i_from; i_from = g_slist_next (i_from)) {
+        NEventRule *new_rule = i_from->data;
+        new_entry = TRUE;
+
+        for (i_to = *to; i_to; i_to = g_slist_next (i_to)) {
+            rule = i_to->data;
+            if (n_event_rule_equal (new_rule, rule)) {
+                new_entry = FALSE;
+                break;
+            }
+        }
+
+        if (new_entry) {
+            *to = g_slist_append (*to, new_rule);
+            N_DEBUG (LOG_CAT "new rule:");
+            n_event_rule_dump (new_rule, LOG_CAT);
+        } else {
+            n_event_rule_free (new_rule);
+            i_from->data = rule;
+            N_DEBUG (LOG_CAT "cached rule:");
+            n_event_rule_dump (rule, LOG_CAT);
+        }
+    }
+}
+
+static void
+parse_priority (const char *str, int *out_priority)
+{
+    gint64 value;
+
+    g_assert (str);
+    g_assert (out_priority);
+
+    /* default to lowest priority */
+    *out_priority = 0;
+
+    if (n_parse_number (str, &value)) {
+        if (value < 0)
+            *out_priority = 0;
+        else if (value > G_MAXINT)
+            *out_priority = G_MAXINT;
+        else
+            *out_priority = (int) value;
+    }
 }
 
 static int
-n_event_parse_group_title (const char *value, gchar **out_title,
-                           NProplist **out_rules)
+event_parse_group_title (const char *value, gchar **out_title,
+                         int *out_priority, GSList **out_rules)
 {
     g_assert (value != NULL);
     g_assert (*out_title == NULL);
     g_assert (*out_rules == NULL);
+    g_assert (out_priority != NULL);
 
-    NProplist  *rule_list = NULL;
+    NEventRule *rule      = NULL;
+    GSList     *rule_list = NULL;
     gchar     **split     = NULL;
     gchar     **rules     = NULL;
     gchar     **iter      = NULL;
+    gchar      *priority  = NULL;
 
-    rule_list = n_proplist_new ();
-
-    /* split the value by =>, which as a title and rule separator. first
-       item contains the title, second the unparsed rule string. */
+    /* split the value by =>, which acts as a title and rule separator. first
+       item contains the title (and optionally priority), second item contains
+       unparsed rule string. */
 
     split = g_strsplit (value, "=>", 2);
+
+    if ((priority = strstr (split[0], "@priority"))) {
+        *priority = '\0';
+        priority += strlen ("@priority");
+        g_strstrip (priority);
+        parse_priority (priority, out_priority);
+    }
+
     g_strstrip (split[0]);
 
     /* if there are no rules, then we are done. */
@@ -173,7 +225,8 @@ n_event_parse_group_title (const char *value, gchar **out_title,
     rules = g_strsplit (split[1], ",", -1);
     for (iter = rules; *iter; ++iter) {
         g_strstrip (*iter);
-        n_event_parse_rule (*iter, rule_list);
+        if ((rule = n_event_rule_parse (*iter)))
+            rule_list = g_slist_append (rule_list, rule);
     }
 
     g_strfreev (rules);
@@ -186,7 +239,7 @@ done:
     return TRUE;
 }
 
-static NProplist*
+NProplist*
 n_event_parse_properties (GKeyFile *keyfile, const char *group,
                           GHashTable *keytypes, GHashTable *defines)
 {
@@ -209,19 +262,25 @@ n_event_parse_properties (GKeyFile *keyfile, const char *group,
 
     /* first pass for getting includes in */
     for (key = key_list; *key; ++key) {
-        if (g_str_has_prefix (*key, GROUP_ENTRY_INCLUDE)) {
+        if (g_str_has_prefix (*key, N_EVENT_GROUP_ENTRY_INCLUDE)) {
             value = g_key_file_get_string (keyfile, group, *key, NULL);
             if (defines && (includes = g_hash_table_lookup (defines, value)))
                 n_proplist_merge (proplist, includes);
             else
                 N_WARNING (LOG_CAT "tried to include unknown define '%s'", value);
             g_free (value);
+            /* mark the key as empty to prevent leaking include keys
+             * to event proplist. */
+            **key = '\0';
         }
     }
 
     /* second pass for getting event values, also override possible
      * values coming from includes. */
     for (key = key_list; *key; ++key) {
+        if (!**key)
+            continue;
+
         key_type = GPOINTER_TO_INT(g_hash_table_lookup (keytypes, *key));
 
         switch (key_type) {
@@ -240,31 +299,51 @@ n_event_parse_properties (GKeyFile *keyfile, const char *group,
                 break;
         }
     }
-
     g_strfreev (key_list);
 
     return proplist;
 }
 
-static NEvent*
-n_event_parse_group (GKeyFile *keyfile, const char *group,
-                     GHashTable *keytypes, GHashTable *defines)
+/* Sort rules so that context rules are evaluated first,
+ * as the context rule values are most likely already cached. */
+static gint
+sort_rules_cb (gconstpointer a, gconstpointer b)
 {
-    g_assert (keyfile != NULL);
-    g_assert (group != NULL);
-    g_assert (keytypes != NULL);
+    const NEventRule *rule_a = a;
+    const NEventRule *rule_b = b;
+
+    if (rule_a->target == rule_b->target)
+        return 0;
+    if (rule_a->target == N_EVENT_RULE_CONTEXT)
+        return -1;
+
+    return 1;
+}
+
+NEvent*
+n_event_new_from_group (GSList **rule_list, GKeyFile *keyfile, const char *group,
+                        GHashTable *keytypes, GHashTable *defines)
+{
+    g_assert (keyfile);
+    g_assert (group);
+    g_assert (keytypes);
+    g_assert (rule_list);
 
     NEvent    *event = NULL;
     NProplist *props = NULL;
-    NProplist *rules = NULL;
+    GSList    *rules = NULL;
     gchar     *title = NULL;
+    int        priority = 0;
+
+    if (g_str_has_prefix (group, N_EVENT_GROUP_ENTRY_DEFINE))
+        return NULL;
 
     /* parse the group title and related rules. */
-    if (g_str_has_prefix (group, GROUP_ENTRY_DEFINE))
+
+    if (!event_parse_group_title (group, &title, &priority, &rules))
         return NULL;
 
-    if (!n_event_parse_group_title (group, &title, &rules))
-        return NULL;
+    merge_rules (rule_list, rules);
 
     /* convert the group content entries to property list. */
 
@@ -272,10 +351,11 @@ n_event_parse_group (GKeyFile *keyfile, const char *group,
 
     /* create a new event based on the parsed data. */
 
-    event = n_event_new ();
+    event             = n_event_new ();
     event->name       = title;
-    event->rules      = rules;
+    event->rules      = g_slist_sort (rules, sort_rules_cb);
     event->properties = props;
+    event->priority   = priority;
 
     return event;
 }
@@ -291,5 +371,3 @@ n_event_get_properties (NEvent *event)
 {
     return (event != NULL) ? event->properties : NULL;
 }
-
-

@@ -30,6 +30,7 @@
 #include "plugin-internal.h"
 #include "sinkinterface-internal.h"
 #include "inputinterface-internal.h"
+#include "eventlist-internal.h"
 #include "event-internal.h"
 #include "request-internal.h"
 #include "context-internal.h"
@@ -53,8 +54,7 @@ struct _NCore
     unsigned int      num_inputs;
 
     NContext         *context;              /* global context for broadcasting and sharing values */
-    GHashTable       *event_table;          /* hash table of GList* containing NEvent* for easy lookup */
-    GList            *event_list;           /* list of all events */
+    NEventList       *eventlist;
 
     NHaptic          *haptic;               /* haptic helper */
     NDBusHelper      *dbus;                 /* dbus helper */

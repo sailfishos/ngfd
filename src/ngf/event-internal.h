@@ -2,7 +2,9 @@
  * ngfd - Non-graphic feedback daemon
  *
  * Copyright (C) 2010 Nokia Corporation.
+ *               2018 Jolla Ltd
  * Contact: Xun Chen <xun.chen@nokia.com>
+ *          Juho Hämäläinen <juho.hamalainen@jolla.com>
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -22,25 +24,33 @@
 #ifndef N_EVENT_INTERNAL_H
 #define N_EVENT_INTERNAL_H
 
-/* typedef struct _NEvent NEvent; */
-
 #include <ngf/event.h>
 
+#include <ngf/request.h>
 #include <ngf/proplist.h>
 #include "core-internal.h"
+
+#define N_EVENT_GROUP_ENTRY_DEFINE  "%define "
+#define N_EVENT_GROUP_ENTRY_INCLUDE "%include"
 
 struct _NEvent
 {
     gchar      *name;               /* event name */
     NProplist  *properties;         /* properties */
-    NProplist  *rules;
+    GSList     *rules;
+    int         priority;           /* higher value higher priority */
 };
 
-NEvent* n_event_new            ();
-void    n_event_parse_defines  (NCore *core, GKeyFile *keyfile,
-                                const char *group, GHashTable **defines);
-NEvent* n_event_new_from_group (NCore *core, GKeyFile *keyfile,
-                                const char *group, GHashTable *defines);
-void    n_event_free           (NEvent *event);
+NEvent*     n_event_new              ();
+void        n_event_free             (NEvent *event);
 
-#endif /* N_EVENT_INTERNAL_H */
+NEvent*     n_event_new_from_group   (GSList **rule_list, GKeyFile *keyfile,
+                                      const char *group, GHashTable *keytypes, GHashTable *defines);
+NProplist*  n_event_parse_properties (GKeyFile *keyfile, const char *group,
+                                      GHashTable *key_types, GHashTable *defines);
+
+void        n_event_rules_dump       (NEvent *event, const char *debug_prefix);
+guint       n_event_rules_size       (const NEvent *event);
+int         n_event_rules_equal      (NEvent *a, NEvent *b);
+
+#endif
