@@ -276,6 +276,7 @@ src/plugins/canberra/Makefile
 src/plugins/callstate/Makefile
 src/plugins/devicelock/Makefile
 src/plugins/route/Makefile
+src/plugins/null/Makefile
 doc/Makefile
 data/Makefile
 data/events.d/Makefile
