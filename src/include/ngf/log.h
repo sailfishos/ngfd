@@ -63,6 +63,10 @@ void n_log_initialize (NLogLevel level);
  */
 void n_log_set_level  (NLogLevel level);
 
+/** Get current logging level
+ */
+NLogLevel n_log_get_level ();
+
 /** Select log target
  * @param target Log target
  */

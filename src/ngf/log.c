@@ -65,6 +65,12 @@ n_log_set_level (NLogLevel level)
     _log_level = level;
 }
 
+NLogLevel
+n_log_get_level ()
+{
+    return _log_level;
+}
+
 void
 n_log_set_target (NLogTarget target)
 {
