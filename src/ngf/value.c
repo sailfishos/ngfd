@@ -257,23 +257,24 @@ n_value_to_string (const NValue *value)
 
     switch (value->type) {
         case N_VALUE_TYPE_STRING:
-            result = g_strdup_printf ("%s (string)", value->value.s);
+            result = g_strdup_printf ("%s " N_VALUE_STR_STRING, value->value.s);
             break;
 
         case N_VALUE_TYPE_INT:
-            result = g_strdup_printf ("%d (int)", value->value.i);
+            result = g_strdup_printf ("%d " N_VALUE_STR_INT, value->value.i);
             break;
 
         case N_VALUE_TYPE_UINT:
-            result = g_strdup_printf ("%u (uint)", value->value.u);
+            result = g_strdup_printf ("%u " N_VALUE_STR_UINT, value->value.u);
             break;
 
         case N_VALUE_TYPE_BOOL:
-            result = value->value.b ? g_strdup ("TRUE (bool)") : g_strdup ("FALSE (bool)");
+            result = value->value.b ? g_strdup ("TRUE " N_VALUE_STR_BOOL)
+                                    : g_strdup ("FALSE " N_VALUE_STR_BOOL);
             break;
 
         case N_VALUE_TYPE_POINTER:
-            result = g_strdup_printf ("0x%p (pointer)", value->value.p);
+            result = g_strdup_printf ("0x%p " N_VALUE_STR_POINTER, value->value.p);
             break;
 
         default:
