@@ -13,7 +13,7 @@ START_TEST (test_create)
     fail_unless (core->conf_path != NULL);
     fail_unless (core->plugin_path != NULL);
     fail_unless (core->context != NULL);
-    fail_unless (core->event_table != NULL);
+    fail_unless (core->eventlist != NULL);
     fail_unless (core->key_types != NULL);
 
     n_core_free (core);
@@ -68,12 +68,12 @@ START_TEST (test_add_get_events)
     fail_unless (core != NULL);
     fail_unless (n_core_get_events (core) == NULL);
 
-    NEvent *event = NULL;
-    event = n_event_new ();
-    fail_unless (event != NULL);
-    event->name = g_strdup ("sms");
+    GKeyFile *keyfile = NULL;
+    keyfile = g_key_file_new ();
+    g_key_file_set_value (keyfile, "sms", "sink.null", "true");
+    n_event_list_parse_keyfile (core->eventlist, keyfile);
+    g_key_file_free (keyfile);
 
-    n_core_add_event (core, event);
     GList *events = NULL;
     events = n_core_get_events (core);
     fail_unless (events != NULL);
@@ -81,7 +81,7 @@ START_TEST (test_add_get_events)
     uint length = g_list_length (events);
     fail_unless (length == 1);
     NEvent *receivedEvent = (NEvent*)events->data;
-    fail_unless (g_strcmp0 (receivedEvent->name, event->name) == 0);
+    fail_unless (g_strcmp0 (receivedEvent->name, "sms") == 0);
 
     g_list_free (events);
     events = NULL;
