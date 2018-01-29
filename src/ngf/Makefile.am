@@ -32,9 +32,13 @@ ngfd_SOURCES =                \
     value.c                   \
     proplist.h                \
     proplist.c                \
+    eventlist-internal.h      \
+    eventlist.c               \
     event-internal.h          \
     event.h                   \
     event.c                   \
+    eventrule-internal.h      \
+    eventrule.c               \
     request-internal.h        \
     request.h                 \
     request.c                 \
