@@ -160,8 +160,11 @@ n_context_unsubscribe_value_change (NContext *context, const char *key,
         return;
 
     if (key) {
-        if ((context_key = g_hash_table_lookup (context->keys, key)))
+        if ((context_key = g_hash_table_lookup (context->keys, key))) {
             remove_from_list (&context_key->subscribers, callback);
+            if (!context_key->subscribers)
+                g_hash_table_remove (context->keys, key);
+        }
     } else
         remove_from_list (&context->all_keys, callback);
 }
