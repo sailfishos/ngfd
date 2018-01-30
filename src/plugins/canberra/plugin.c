@@ -209,10 +209,6 @@ canberra_sink_play (NSinkInterface *iface, NRequest *request)
     if (u->support_cached_samples)
         ca_proplist_sets (ca_props, CA_PROP_CANBERRA_CACHE_CONTROL, "permanent");
 
-    /* convert all properties within the request that begin with
-       "sound.stream." prefix. */
-    n_proplist_foreach (props, proplist_to_structure_cb, ca_props);
-
     if (u->support_cached_samples && !g_hash_table_contains(u->cached_samples, data->filename)) {
         N_DEBUG (LOG_CAT "caching sample %s", data->filename);
         error = ca_context_cache_full (u->c_context, ca_props);
@@ -227,6 +223,10 @@ canberra_sink_play (NSinkInterface *iface, NRequest *request)
         } else
             g_hash_table_add (u->cached_samples, g_strdup(data->filename));
     }
+
+    /* convert all properties within the request that begin with
+       "sound.stream." prefix. */
+    n_proplist_foreach (props, proplist_to_structure_cb, ca_props);
 
     error = ca_context_play_full (u->c_context, 0, ca_props, NULL, NULL);
     ca_proplist_destroy (ca_props);
