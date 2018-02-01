@@ -23,6 +23,7 @@
 #include <dbus/dbus.h>
 #include <dbus/dbus-glib-lowlevel.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <ngf/log.h>
 #include <ngf/value.h>
@@ -48,15 +49,25 @@ N_PLUGIN_DESCRIPTION ("D-Bus interface")
 #define NGF_DBUS_METHOD_PLAY  "Play"
 #define NGF_DBUS_METHOD_STOP  "Stop"
 #define NGF_DBUS_METHOD_PAUSE "Pause"
+#define NGF_DBUS_METHOD_DEBUG "internal_debug"
 
-#define NGF_DBUS_PROPERTY_ID   "dbus.event.id"
 #define NGF_DBUS_PROPERTY_NAME "dbus.event.client"
 
 #define DBUS_CLIENT_MATCH "type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged'"
 
 #define DBUS_MCE_NAME         "com.nokia.mce"
 
-#define RINGTONE_STOP_TIMEOUT 200
+#define DBUSIF_REQUEST_LIMIT    "request_limit"
+#define DBUSIF_CLIENT_LIMIT     "client_limit"
+#define DEFAULT_REQUEST_LIMIT   (16)
+#define DEFAULT_CLIENT_LIMIT    (64)
+
+/* from ngf/core-player.h */
+#define N_DBUS_EVENT_FAILED     (0)
+#define N_DBUS_EVENT_COMPLETED  (1)
+
+static uint32_t          dbusif_max_requests;
+static uint32_t          dbusif_max_clients;
 
 static gboolean          msg_parse_variant       (DBusMessageIter *iter,
                                                   NProplist *proplist,
@@ -84,11 +95,16 @@ typedef struct _DBusInterfaceData
 {
     DBusConnection  *connection;
     NInputInterface *iface;
-    uint32_t event_id;
     GSList *clients; // Internal cache of all clients currently connected
+    uint32_t client_count;
 } DBusInterfaceData;
 
-static DBusInterfaceData *g_data = NULL;
+typedef struct _DBusInterfaceClient
+{
+    uint32_t    ref;
+    uint32_t    active_requests;
+    char        name[1];
+} DBusInterfaceClient;
 
 static gboolean
 msg_parse_variant (DBusMessageIter *iter, NProplist *proplist, const char *key)
@@ -200,30 +216,138 @@ dbusif_ack (DBusConnection *connection, DBusMessage *msg, uint32_t event_id)
 }
 
 static void
-dbusif_reply_error (DBusConnection *connection, DBusMessage *msg, const char *error_message)
+dbusif_reply_error (DBusConnection *connection, DBusMessage *msg,
+                    const char *error_name, const char *error_message)
 {
     DBusMessage *reply = NULL;
-    const char *error;
+    const char *dbus_error_name;
+    const char *dbus_error_msg;
 
-    error = error_message ? error_message : "Unknown error.";
-    N_DEBUG (LOG_CAT "reply error: %s", error);
-    reply = dbus_message_new_error (msg, DBUS_ERROR_FAILED, error);
+    dbus_error_name = error_name ?: DBUS_ERROR_FAILED;
+    dbus_error_msg = error_message ?: "Unknown error.";
+    N_DEBUG (LOG_CAT "reply error: %s (%s)", dbus_error_name, dbus_error_msg);
+    reply = dbus_message_new_error (msg, dbus_error_name, dbus_error_msg);
     if (reply) {
         dbus_connection_send (connection, reply, NULL);
         dbus_message_unref (reply);
     }
 }
 
+static DBusInterfaceClient*
+client_new (const char *client_name)
+{
+    DBusInterfaceClient *c;
+
+    c = g_malloc (sizeof (*c) + strlen (client_name));
+    c->ref = 1;
+    c->active_requests = 0;
+    g_stpcpy (c->name, client_name);
+    N_DEBUG (LOG_CAT ">> new client (%s)", c->name);
+
+    return c;
+}
+
+static DBusInterfaceClient*
+client_ref (DBusInterfaceClient *client)
+{
+    client->ref++;
+    return client;
+}
+
+static void
+client_free (DBusInterfaceClient *client)
+{
+    g_free (client);
+}
+
+static void
+client_unref (DBusInterfaceClient *client)
+{
+    client->ref--;
+    g_assert(client->ref != (uint32_t) -1);
+    if (client->ref == 0)
+        client_free (client);
+}
+
+static inline void
+client_request_new (DBusInterfaceClient *client)
+{
+    client->active_requests++;
+}
+
+static inline void
+client_request_done (DBusInterfaceClient *client)
+{
+    if (client->active_requests == 0)
+        N_ERROR (LOG_CAT "client '%s' active requests 0", client->name);
+    else
+        client->active_requests--;
+}
+
+static DBusInterfaceClient*
+client_list_find (DBusInterfaceData *idata, const char *client_name)
+{
+    GSList              *search;
+    DBusInterfaceClient *c;
+
+    for (search = idata->clients; search; search = g_slist_next(search)) {
+        c = search->data;
+        if (g_str_equal (client_name, c->name))
+            return c;
+    }
+
+    return NULL;
+}
+
+static void
+client_list_remove (DBusInterfaceData *idata, DBusInterfaceClient *client)
+{
+    GSList *search;
+
+    if ((search = g_slist_find (idata->clients, client))) {
+        idata->clients = g_slist_remove_link (idata->clients, search);
+        idata->client_count--;
+    } else
+        N_ERROR (LOG_CAT "cannot find client %s from client list.", client->name);
+}
+
+static void
+client_list_add (DBusInterfaceData *idata, DBusInterfaceClient *client)
+{
+    idata->clients = g_slist_append (idata->clients, client);
+    idata->client_count++;
+}
+
 static DBusHandlerResult
 dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
-                     NInputInterface *iface, uint32_t event_id)
+                     NInputInterface *iface)
 {
-    const char      *event      = NULL;
-    NProplist       *properties = NULL;
-    NRequest        *request    = NULL;
-    DBusMessageIter  iter;
-    const char      *sender     = NULL;
-    GSList          *search     = NULL;
+    DBusInterfaceData   *idata      = NULL;
+    const char          *event      = NULL;
+    NProplist           *properties = NULL;
+    NRequest            *request    = NULL;
+    DBusMessageIter      iter;
+    const char          *sender     = NULL;
+    DBusInterfaceClient *client     = NULL;
+    const char          *error      = NULL;
+
+    idata = n_input_interface_get_userdata (iface);
+
+    // We won't launch events without proper sender
+    if ((sender = dbus_message_get_sender (msg)) == NULL)
+        goto fail;
+
+    if (!(client = client_list_find(idata, sender))) {
+        if (idata->client_count >= dbusif_max_clients) {
+            error = "Too many simultaneous clients.";
+            goto limits;
+        }
+        client = client_new (sender);
+        client_list_add (idata, client);
+    } else if (client->active_requests >= dbusif_max_requests) {
+        error = "Too many simultaneous requests.";
+        goto limits;
+    }
 
     dbus_message_iter_init (msg, &iter);
     if (dbus_message_iter_get_arg_type (&iter) != DBUS_TYPE_STRING)
@@ -235,32 +359,29 @@ dbusif_play_handler (DBusConnection *connection, DBusMessage *msg,
     if (!msg_get_properties (&iter, &properties))
         goto fail;
 
-    // We won't launch events without proper sender
-    if ((sender = dbus_message_get_sender (msg)) == NULL)
-        goto fail;
+    client_ref (client);
+    client_request_new (client);
 
-    N_INFO (LOG_CAT ">> play received for event '%s' with id '%u' (client %s)", event, event_id, sender);
+    n_proplist_set_pointer (properties, NGF_DBUS_PROPERTY_NAME, client);
+    request = n_request_new_with_event_and_properties (event, properties);
+    n_proplist_free (properties);
 
-    for (search = g_data->clients; search; search = g_slist_next(search)) {
-        if (g_str_equal (sender, (const char*)search->data))
-            break;
-    }
-    if (!search)
-        g_data->clients = g_slist_append (g_data->clients, g_strdup (sender));
+    N_INFO (LOG_CAT ">> play received for event '%s' with id '%u' (client %s : %u active request(s))",
+                    event, n_request_get_id (request), client->name, client->active_requests);
 
     // Reply internal event_id immediately
-    dbusif_ack (connection, msg, event_id);
+    dbusif_ack (connection, msg, n_request_get_id (request));
 
-    n_proplist_set_uint (properties, NGF_DBUS_PROPERTY_ID, event_id);
-    n_proplist_set_string (properties, NGF_DBUS_PROPERTY_NAME, sender);
-    request = n_request_new_with_event_and_properties (event, properties);
     n_input_interface_play_request (iface, request);
-    n_proplist_free (properties);
 
     return DBUS_HANDLER_RESULT_HANDLED;
 
+limits:
+    dbusif_reply_error (connection, msg, DBUS_ERROR_LIMITS_EXCEEDED, error);
+    return DBUS_HANDLER_RESULT_HANDLED;
+
 fail:
-    dbusif_reply_error (connection, msg, "Malformed method call.");
+    dbusif_reply_error (connection, msg, DBUS_ERROR_INVALID_ARGS, "Malformed method call.");
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
@@ -273,8 +394,6 @@ dbusif_lookup_request (NInputInterface *iface, uint32_t event_id)
     NRequest  *request         = NULL;
     GList     *active_requests = NULL;
     GList     *iter            = NULL;
-    guint      match_id        = 0;
-    NProplist *properties      = NULL;
 
     if (event_id == 0)
         return NULL;
@@ -284,12 +403,8 @@ dbusif_lookup_request (NInputInterface *iface, uint32_t event_id)
 
     for (iter = g_list_first (active_requests); iter; iter = g_list_next (iter)) {
         request = (NRequest*) iter->data;
-        properties = (NProplist*) n_request_get_properties (request);
-        if (!properties)
-            continue;
 
-        match_id = n_proplist_get_uint (properties, NGF_DBUS_PROPERTY_ID);
-        if (match_id == event_id)
+        if (n_request_get_id (request) == event_id)
             return request;
     }
 
@@ -316,19 +431,19 @@ dbusif_stop_all (NInputInterface *iface)
 }
 
 static void
-dbusif_stop_by_name (NInputInterface *iface, const char *client_name)
+dbusif_stop_by_client (DBusInterfaceData *idata, DBusInterfaceClient *by_client)
 {
-    g_assert (iface != NULL);
-    g_assert (client_name);
+    g_assert (idata != NULL);
+    g_assert (by_client);
 
-    NCore     *core            = NULL;
-    NRequest  *request         = NULL;
-    GList     *active_requests = NULL;
-    GList     *iter            = NULL;
-    const gchar *match_name    = NULL;
-    NProplist *properties      = NULL;
+    NCore               *core               = NULL;
+    NRequest            *request            = NULL;
+    GList               *active_requests    = NULL;
+    GList               *iter               = NULL;
+    NProplist           *properties         = NULL;
+    DBusInterfaceClient *client             = NULL;
 
-    core = n_input_interface_get_core (iface);
+    core = n_input_interface_get_core (idata->iface);
     active_requests = n_core_get_requests (core);
 
     for (iter = g_list_first (active_requests); iter; iter = g_list_next (iter)) {
@@ -338,9 +453,9 @@ dbusif_stop_by_name (NInputInterface *iface, const char *client_name)
         if (!properties)
             continue;
 
-        match_name = n_proplist_get_string (properties, NGF_DBUS_PROPERTY_NAME);
-        if (match_name && g_str_equal (match_name, client_name))
-            n_input_interface_stop_request (iface, request, 0);
+        client = n_proplist_get_pointer (properties, NGF_DBUS_PROPERTY_NAME);
+        if (client == by_client)
+            n_input_interface_stop_request (idata->iface, request, 0);
     }
 }
 
@@ -348,17 +463,30 @@ static DBusHandlerResult
 dbusif_stop_handler (DBusConnection *connection, DBusMessage *msg,
                      NInputInterface *iface)
 {
-    dbus_uint32_t    event_id  = 0;
-    NRequest        *request   = NULL;
-    const char      *name      = NULL;
-    const char      *error     = NULL;
+    DBusInterfaceData   *idata      = NULL;
+    dbus_uint32_t        event_id   = 0;
+    NRequest            *request    = NULL;
+    const char          *sender     = NULL;
+    const char          *error      = NULL;
+
+    idata = n_input_interface_get_userdata (iface);
+
+    if ((sender = dbus_message_get_sender (msg)) == NULL) {
+        error = "Unknown sender.";
+        goto access;
+    }
+
+    if (!client_list_find(idata, sender)) {
+        error = "Unknown client.";
+        goto access;
+    }
 
     if (!dbus_message_get_args (msg, NULL,
                                 DBUS_TYPE_UINT32, &event_id,
                                 DBUS_TYPE_INVALID))
     {
         error = "Malformed method call.";
-        goto fail;
+        goto args;
     }
 
     N_INFO (LOG_CAT ">> stop received for id '%u'", event_id);
@@ -367,29 +495,61 @@ dbusif_stop_handler (DBusConnection *connection, DBusMessage *msg,
 
     if (!request) {
         error = "No event with given id found.";
-        goto fail;
+        goto args;
     }
 
-    name = n_request_get_name (request);
-    if (name && g_str_equal (name, "ringtone")) {
-        N_DEBUG (LOG_CAT "mute ringtone for delayed stop");
-        n_input_interface_pause_request (iface, request);
-
-        N_DEBUG (LOG_CAT "setup stop timeout for ringtone in %d ms",
-            RINGTONE_STOP_TIMEOUT);
-
-        n_input_interface_stop_request (iface, request, RINGTONE_STOP_TIMEOUT);
-    }
-    else {
-        n_input_interface_stop_request (iface, request, 0);
-    }
+    n_input_interface_stop_request (iface, request, 0);
 
     dbusif_ack (connection, msg, event_id);
 
     return DBUS_HANDLER_RESULT_HANDLED;
 
-fail:
-    dbusif_reply_error (connection, msg, error);
+access:
+    dbusif_reply_error (connection, msg, DBUS_ERROR_ACCESS_DENIED, error);
+
+args:
+    dbusif_reply_error (connection, msg, DBUS_ERROR_INVALID_ARGS, error);
+    return DBUS_HANDLER_RESULT_HANDLED;
+}
+
+
+static DBusHandlerResult
+dbusif_debug_handler (DBusConnection *connection, DBusMessage *msg,
+                      NInputInterface *iface)
+{
+    DBusMessage         *reply          = NULL;
+    DBusInterfaceData   *idata          = NULL;
+    GSList              *search         = NULL;
+    DBusInterfaceClient *client         = NULL;
+    uint32_t             total_clients  = 0;
+    uint32_t             total_requests = 0;
+
+    idata = n_input_interface_get_userdata (iface);
+
+    N_INFO (LOG_CAT "==== DUMP STATS ====");
+
+    for (search = idata->clients; search; search = g_slist_next(search)) {
+        client = (DBusInterfaceClient *) search->data;
+        N_INFO (LOG_CAT "client %s  ref %d, active_requests %u/%u",
+                        client->name, client->ref,
+                        client->active_requests, dbusif_max_requests);
+        total_requests += client->active_requests;
+        total_clients++;
+    }
+
+    N_INFO (LOG_CAT "total clients %u/%u, per-client max requests %u , active requests %u",
+                    total_clients, dbusif_max_clients,
+                    dbusif_max_requests, total_requests);
+    N_INFO (LOG_CAT "====================");
+
+    if (!dbus_message_get_no_reply (msg)) {
+        reply = dbus_message_new_method_return (msg);
+        if (reply) {
+            dbus_connection_send (connection, reply, NULL);
+            dbus_message_unref (reply);
+        }
+    }
+
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
@@ -397,12 +557,24 @@ static DBusHandlerResult
 dbusif_pause_handler (DBusConnection *connection, DBusMessage *msg,
                       NInputInterface *iface)
 {
-    dbus_uint32_t    event_id  = 0;
-    dbus_bool_t      pause     = FALSE;
-    NRequest        *request   = NULL;
-    const char      *error     = NULL;
+    DBusInterfaceData  *idata       = NULL;
+    const char         *sender      = NULL;
+    dbus_uint32_t       event_id    = 0;
+    dbus_bool_t         pause       = FALSE;
+    NRequest           *request     = NULL;
+    const char         *error       = NULL;
 
-    (void) iface;
+    idata = n_input_interface_get_userdata (iface);
+
+    if ((sender = dbus_message_get_sender (msg)) == NULL) {
+        error = "Unknown sender.";
+        goto access;
+    }
+
+    if (!client_list_find(idata, sender)) {
+        error = "Unknown client.";
+        goto access;
+    }
 
     if (!dbus_message_get_args (msg, NULL,
                                 DBUS_TYPE_UINT32, &event_id,
@@ -410,7 +582,7 @@ dbusif_pause_handler (DBusConnection *connection, DBusMessage *msg,
                                 DBUS_TYPE_INVALID))
     {
         error = "Malformed method call.";
-        goto fail;
+        goto args;
     }
 
     N_INFO (LOG_CAT ">> %s received for id '%u'", pause ? "pause" : "resume",
@@ -420,7 +592,7 @@ dbusif_pause_handler (DBusConnection *connection, DBusMessage *msg,
 
     if (!request) {
         error = "No event with given id found.";
-        goto fail;
+        goto args;
     }
 
     if (pause)
@@ -432,31 +604,31 @@ dbusif_pause_handler (DBusConnection *connection, DBusMessage *msg,
 
     return DBUS_HANDLER_RESULT_HANDLED;
 
-fail:
-    dbusif_reply_error (connection, msg, error);
+access:
+    dbusif_reply_error (connection, msg, DBUS_ERROR_ACCESS_DENIED, error);
+    return DBUS_HANDLER_RESULT_HANDLED;
+
+args:
+    dbusif_reply_error (connection, msg, DBUS_ERROR_INVALID_ARGS, error);
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
 static void
-dbusif_disconnect_handler (NInputInterface *iface, const gchar *client)
+dbusif_disconnect_handler (NInputInterface *iface, const gchar *client_name)
 {
-    GSList          *search    = NULL;
+    DBusInterfaceData   *idata  = NULL;
+    DBusInterfaceClient *client = NULL;
 
     g_assert (iface);
-    g_assert (client);
+    g_assert (client_name);
 
-    for (search = g_data->clients; search; search = g_slist_next(search)) {
-        if (g_str_equal (client, (const gchar*)search->data))
-            break;
-    }
+    idata = n_input_interface_get_userdata (iface);
 
-    if (search) {
-        g_data->clients = g_slist_remove_link (g_data->clients, search);
-        g_free (search->data);
-        g_slist_free (search);
-
-        N_INFO (LOG_CAT ">> client disconnect (%s)", client);
-        dbusif_stop_by_name (iface, client);
+    if ((client = client_list_find (idata, client_name))) {
+        N_INFO (LOG_CAT ">> client disconnect (%s)", client->name);
+        dbusif_stop_by_client (idata, client);
+        client_list_remove (idata, client);
+        client_unref (client);
     }
 }
 
@@ -524,13 +696,16 @@ dbusif_message_function (DBusConnection *connection, DBusMessage *msg,
         return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
     if (g_str_equal (member, NGF_DBUS_METHOD_PLAY))
-        return dbusif_play_handler (connection, msg, iface, ++g_data->event_id);
+        return dbusif_play_handler (connection, msg, iface);
 
     else if (g_str_equal (member, NGF_DBUS_METHOD_STOP))
         return dbusif_stop_handler (connection, msg, iface);
 
     else if (g_str_equal (member, NGF_DBUS_METHOD_PAUSE))
         return dbusif_pause_handler (connection, msg, iface);
+
+    else if (g_str_equal (member, NGF_DBUS_METHOD_DEBUG))
+        return dbusif_debug_handler (connection, msg, iface);
 
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
@@ -542,59 +717,60 @@ dbusif_initialize (NInputInterface *iface)
         .message_function = dbusif_message_function
     };
 
+    DBusInterfaceData *idata;
     DBusError error;
     int       ret;
 
-    g_data = g_new0 (DBusInterfaceData, 1);
-    g_data->iface = iface;
+    idata = g_new0 (DBusInterfaceData, 1);
+    idata->iface = iface;
+    n_input_interface_set_userdata (iface, idata);
 
     dbus_error_init (&error);
-    g_data->connection = dbus_bus_get (DBUS_BUS_SYSTEM, &error);
-    if (!g_data->connection) {
+    idata->connection = dbus_bus_get (DBUS_BUS_SYSTEM, &error);
+    if (!idata->connection) {
         N_ERROR (LOG_CAT "failed to get system bus: %s", error.message);
-        dbus_error_free (&error);
-        return FALSE;
+        goto error;
     }
 
-    dbus_connection_setup_with_g_main (g_data->connection, NULL);
+    dbus_connection_setup_with_g_main (idata->connection, NULL);
 
-    ret = dbus_bus_request_name (g_data->connection, NGF_DBUS_NAME,
+    ret = dbus_bus_request_name (idata->connection, NGF_DBUS_NAME,
         DBUS_NAME_FLAG_REPLACE_EXISTING, &error);
 
     if (ret != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER) {
-        if (dbus_error_is_set (&error)) {
+        if (dbus_error_is_set (&error))
             N_ERROR (LOG_CAT "failed to get unique name: %s", error.message);
-            dbus_error_free (&error);
-        }
-
-        return FALSE;
+        goto error;
     }
 
-    if (!dbus_connection_register_object_path (g_data->connection,
+    if (!dbus_connection_register_object_path (idata->connection,
         NGF_DBUS_PATH, &method, iface))
-        return FALSE;
+        goto error;
 
     /* Monitor for ohmd restarts and disconnecting clients*/
-    dbus_bus_add_match (g_data->connection, DBUS_CLIENT_MATCH, NULL);
-    dbus_connection_add_filter (g_data->connection, dbusif_message_function, iface, NULL);
+    dbus_bus_add_match (idata->connection, DBUS_CLIENT_MATCH, NULL);
+    dbus_connection_add_filter (idata->connection, dbusif_message_function, iface, NULL);
 
     return TRUE;
+
+error:
+    g_free (idata);
+    if (dbus_error_is_set (&error))
+        dbus_error_free (&error);
+    return FALSE;
 }
 
 static void
 dbusif_shutdown (NInputInterface *iface)
 {
-    (void) iface;
+    DBusInterfaceData *idata;
 
-    if (g_data->connection) {
-        dbus_connection_unref (g_data->connection);
-        g_data->connection = NULL;
-    }
+    idata = n_input_interface_get_userdata (iface);
 
-    if (g_data) {
-        g_free (g_data);
-        g_data = NULL;
-    }
+    if (idata && idata->connection)
+        dbus_connection_unref (idata->connection);
+
+    g_free (idata);
 }
 
 static void
@@ -604,21 +780,23 @@ dbusif_send_error (NInputInterface *iface, NRequest *request,
     N_DEBUG (LOG_CAT "error occurred for request '%s': %s",
         n_request_get_name (request), err_msg);
 
-    dbusif_send_reply (iface, request, 0);
+    dbusif_send_reply (iface, request, N_DBUS_EVENT_FAILED);
 }
 
 static void
 dbusif_send_reply (NInputInterface *iface, NRequest *request, int code)
 {
-    DBusMessage     *msg   = NULL;
-    const NProplist *props = NULL;
-    guint            event_id = 0;
-    guint            status = 0;
+    DBusInterfaceData   *idata   = NULL;
+    DBusMessage         *msg     = NULL;
+    const NProplist     *props   = NULL;
+    guint               event_id = 0;
+    DBusInterfaceClient *client  = NULL;
+    guint               status   = N_DBUS_EVENT_FAILED;
 
-    (void) iface;
+    idata = n_input_interface_get_userdata (iface);
 
     props  = n_request_get_properties (request);
-    event_id = n_proplist_get_uint ((NProplist*) props, NGF_DBUS_PROPERTY_ID);
+    event_id = n_request_get_id (request);
     status = code;
 
     if (event_id == 0)
@@ -631,7 +809,7 @@ dbusif_send_reply (NInputInterface *iface, NRequest *request, int code)
                                         NGF_DBUS_IFACE,
                                         NGF_DBUS_STATUS)) == NULL) {
         N_WARNING (LOG_CAT "failed to construct signal.");
-        return;
+        goto end;
     }
 
     dbus_message_append_args (msg,
@@ -639,13 +817,21 @@ dbusif_send_reply (NInputInterface *iface, NRequest *request, int code)
         DBUS_TYPE_UINT32, &status,
         DBUS_TYPE_INVALID);
 
-    dbus_connection_send (g_data->connection, msg, NULL);
+    dbus_connection_send (idata->connection, msg, NULL);
     dbus_message_unref (msg);
+
+end:
+    if (code == N_DBUS_EVENT_FAILED || code == N_DBUS_EVENT_COMPLETED) {
+        client = n_proplist_get_pointer (props, NGF_DBUS_PROPERTY_NAME);
+        client_request_done (client);
+        client_unref (client);
+    }
 }
 
 int
 n_plugin__load (NPlugin *plugin)
 {
+    const NProplist *props;
     static const NInputInterfaceDecl iface = {
         .name       = "dbus",
         .initialize = dbusif_initialize,
@@ -653,6 +839,18 @@ n_plugin__load (NPlugin *plugin)
         .send_error = dbusif_send_error,
         .send_reply = dbusif_send_reply
     };
+
+    props = n_plugin_get_params (plugin);
+
+    if (n_proplist_has_key (props, DBUSIF_REQUEST_LIMIT))
+        dbusif_max_requests = n_proplist_get_uint (props, DBUSIF_REQUEST_LIMIT);
+    else
+        dbusif_max_requests = DEFAULT_REQUEST_LIMIT;
+
+    if (n_proplist_has_key (props, DBUSIF_CLIENT_LIMIT))
+        dbusif_max_clients = n_proplist_get_uint (props, DBUSIF_CLIENT_LIMIT);
+    else
+        dbusif_max_clients = DEFAULT_CLIENT_LIMIT;
 
     /* register the DBus interface as the NInputInterface */
     n_plugin_register_input (plugin, &iface);

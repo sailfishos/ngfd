@@ -60,3 +60,21 @@ n_input_interface_stop_request  (NInputInterface *iface, NRequest *request, guin
 
     n_core_stop_request (iface->core, request, timeout);
 }
+
+void
+n_input_interface_set_userdata (NInputInterface *iface, void *userdata)
+{
+    if (!iface)
+        return;
+
+    iface->userdata = userdata;
+}
+
+void*
+n_input_interface_get_userdata (NInputInterface *iface)
+{
+    if (!iface)
+        return NULL;
+
+    return iface->userdata;
+}

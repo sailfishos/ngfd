@@ -366,11 +366,13 @@ n_proplist_dump (const NProplist *proplist)
     NValue *value = NULL;
     gchar *str_value = NULL;
 
-    g_hash_table_iter_init (&iter, proplist->values);
-    while (g_hash_table_iter_next (&iter, (gpointer) &key, (gpointer) &value)) {
-        str_value = n_value_to_string (value);
-        N_DEBUG (LOG_CAT "%s = %s", key, str_value);
-        g_free (str_value);
+    if (n_log_get_level() <= N_LOG_LEVEL_DEBUG) {
+        g_hash_table_iter_init (&iter, proplist->values);
+        while (g_hash_table_iter_next (&iter, (gpointer) &key, (gpointer) &value)) {
+            str_value = n_value_to_string (value);
+            N_DEBUG (LOG_CAT "%s = %s", key, str_value);
+            g_free (str_value);
+        }
     }
 }
 

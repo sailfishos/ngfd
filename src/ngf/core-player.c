@@ -322,8 +322,8 @@ static gboolean
 n_core_request_done_cb (gpointer userdata)
 {
     NRequest  *request       = (NRequest*) userdata;
+    NRequest  *fallback      = NULL;
     NCore     *core          = request->core;
-    NProplist *new_props     = NULL;
     gboolean   has_fallbacks = FALSE;
 
     /* ensure that maximum timeout is removed. */
@@ -376,17 +376,12 @@ n_core_request_done_cb (gpointer userdata)
 
     N_DEBUG (LOG_CAT "request has failed, restarting with fallback.");
 
-    new_props = n_proplist_copy (request->original_properties);
-
-    NRequest *new_request = n_request_new ();
-    new_request->name        = g_strdup (request->name);
-    new_request->input_iface = request->input_iface;
-    new_request->properties  = new_props;
-    new_request->is_fallback = TRUE;
+    fallback              = n_request_copy (request);
+    fallback->is_fallback = TRUE;
 
     n_request_free (request);
 
-    n_core_play_request (core, new_request);
+    n_core_play_request (core, fallback);
 
     return FALSE;
 

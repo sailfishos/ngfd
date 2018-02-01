@@ -507,6 +507,7 @@ N_PLUGIN_LOAD (plugin)
 
     static const NSinkInterfaceDecl decl = {
         .name       = "immvibe",
+        .type       = N_SINK_INTERFACE_TYPE_VIBRATOR,
         .initialize = immvibe_sink_initialize,
         .shutdown   = immvibe_sink_shutdown,
         .can_handle = immvibe_sink_can_handle,

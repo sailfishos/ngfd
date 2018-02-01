@@ -1,4 +1,4 @@
-SUBDIRS = fake resource transform
+SUBDIRS = fake resource transform null
 
 if BUILD_DBUS
 SUBDIRS += dbus
@@ -39,4 +39,8 @@ endif
 
 if BUILD_DEVICELOCK
 SUBDIRS += devicelock
+endif
+
+if BUILD_ROUTE
+SUBDIRS += route
 endif

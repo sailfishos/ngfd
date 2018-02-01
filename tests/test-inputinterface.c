@@ -99,10 +99,13 @@ START_TEST (test_play_pause_request)
     fail_unless (iface != NULL);
     NCore *core = n_core_new (NULL, NULL);
     const char *event_name = "testing_event";
-    NEvent *event = n_event_new ();
-    event->name = g_strdup (event_name);
-    event->properties  = n_proplist_new ();
-    n_core_add_event (core, event);
+
+    GKeyFile *keyfile = NULL;
+    keyfile = g_key_file_new ();
+    g_key_file_set_value (keyfile, event_name, "sink.null", "true");
+    n_event_list_parse_keyfile (core->eventlist, keyfile);
+    g_key_file_free (keyfile);
+
     NPlugin *plugin = g_new0 (NPlugin, 1);
     fail_unless (plugin != NULL);
     plugin->core = core;

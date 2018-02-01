@@ -35,7 +35,7 @@ struct _NPlugin
 {
     NCore       *core;              /* core functionality */
     GModule     *module;            /* plugin module handle */
-    gpointer     userdata;          /* plugin internal data */
+    gpointer     userdata;          /* plugin implementor internal data */
     NProplist   *params;            /* plugin parameters */
 
     const char* (*get_name)    ();
@@ -45,7 +45,8 @@ struct _NPlugin
     void        (*unload)      (NPlugin *plugin);
 };
 
-NPlugin* n_plugin_load   (const char *plugin_name);
+NPlugin* n_plugin_open   (const char *plugin_name);
+int      n_plugin_init   (NPlugin *plugin);
 void     n_plugin_unload (NPlugin *plugin);
 
 #endif /* N_PLUGIN_INTERNAL_H */

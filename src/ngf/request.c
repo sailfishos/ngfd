@@ -21,13 +21,34 @@
 
 #include "request-internal.h"
 
+static guint id_counter = 0;
+
 NRequest*
 n_request_new ()
 {
     NRequest *request = NULL;
 
     request = g_slice_new0 (NRequest);
+    /* skip 0 */
+    request->id = ++id_counter ? id_counter : ++id_counter;
     return request;
+}
+
+NRequest*
+n_request_copy (const NRequest *request)
+{
+    NRequest *copy;
+
+    copy                = g_slice_new0 (NRequest);
+    copy->id            = request->id;
+    copy->name          = request->name ? g_strdup (request->name) : NULL;
+    copy->input_iface   = request->input_iface;
+    if (request->original_properties)
+        copy->properties = n_proplist_copy (request->original_properties);
+    else if (request->properties)
+        copy->properties = n_proplist_copy (request->properties);
+
+    return copy;
 }
 
 NRequest*
@@ -47,7 +68,7 @@ n_request_new_with_event_and_properties (const char *event, const NProplist *pro
     if (!event)
         return NULL;
 
-    NRequest *request = g_slice_new0 (NRequest);
+    NRequest *request   = n_request_new ();
     request->name       = g_strdup (event);
     request->properties = n_proplist_copy ((NProplist*) properties);
 

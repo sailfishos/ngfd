@@ -71,6 +71,7 @@ N_PLUGIN_LOAD (plugin)
 
     static const NSinkInterfaceDecl decl = {
         .name       = "fake",
+        .type       = "fake",
         .initialize = fake_sink_initialize,
         .shutdown   = fake_sink_shutdown,
         .can_handle = fake_sink_can_handle,

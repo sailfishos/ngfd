@@ -20,6 +20,7 @@
  */
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <dbus/dbus.h>
 #include <dbus/dbus-glib-lowlevel.h>
 #include "volume-controller.h"
@@ -42,6 +43,11 @@
 #define ENTRY_REMOVED_SIGNAL    STREAM_RESTORE_IF "." ENTRY_REMOVED_MEMBER
 #define VOLUME_UPDATED_SIGNAL   STREAM_ENTRY_IF "." VOLUME_UPDATED_MEMBER
 
+#define MAINVOLUME_IF           "com.Meego.MainVolume2"
+#define MAINVOLUME_PATH         "/com/meego/mainvolume2"
+#define MEDIA_STATE_CHANGED_MEMBER "MediaStateChanged"
+#define MEDIA_STATE_SIGNAL      MAINVOLUME_IF "." MEDIA_STATE_CHANGED_MEMBER
+
 #define DBUS_PROPERTIES_IF      "org.freedesktop.DBus.Properties"
 #define PULSE_LOOKUP_DEST       "org.PulseAudio1"
 #define PULSE_LOOKUP_PATH       "/org/pulseaudio/server_lookup1"
@@ -58,8 +64,12 @@
 #define TO_PA_VOL(volume)       ((gdouble) (volume > 100 ? 100 : volume) / 100.0) * VOLUME_SCALE_VALUE
 #define FROM_PA_VOL(volume)     ((gdouble) volume / (gdouble) VOLUME_SCALE_VALUE * 100.0)
 
+#define QUEUE_ITEM_TYPE_SET (0)
+#define QUEUE_ITEM_TYPE_GET (1)
+
 typedef struct _QueueItem
 {
+    guint  type;
     gchar *role;
     int    volume;
 } QueueItem;
@@ -93,10 +103,14 @@ static void           *subscribe_userdata                = NULL;
 static volume_controller_subscribe_cb subscribe_callback = NULL;
 static gboolean        queue_subscribe                   = FALSE;
 
+static media_state_subscribe_cb media_state_callback     = NULL;
+static void           *media_state_userdata              = NULL;
+
 static gboolean          retry_timeout_cb           (gpointer userdata);
 static DBusHandlerResult filter_cb                  (DBusConnection *connection, DBusMessage *msg, void *data);
 static void              append_volume              (DBusMessageIter *iter, guint volume);
 static gboolean          add_entry                  (const char *role, guint volume);
+static void              get_entry_volume           (const char *role);
 static void              process_queued_ops         ();
 static void              connect_to_pulseaudio      ();
 static void              disconnect_from_pulseaudio ();
@@ -327,6 +341,17 @@ filter_cb (DBusConnection *connection, DBusMessage *msg, void *data)
             }
         }
     }
+    else if (media_state_callback &&
+             dbus_message_has_interface (msg, MAINVOLUME_IF) &&
+             dbus_message_has_path      (msg, MAINVOLUME_PATH) &&
+             dbus_message_has_member    (msg, MEDIA_STATE_CHANGED_MEMBER))
+    {
+        const char *media_state;
+
+        if (dbus_message_get_args(msg, NULL, DBUS_TYPE_STRING, &media_state, DBUS_TYPE_INVALID)) {
+            media_state_callback (media_state, media_state_userdata);
+        }
+    }
 
 end:
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
@@ -405,6 +430,108 @@ done:
     if (msg)   dbus_message_unref (msg);
 
     return success;
+}
+
+static void
+get_entry_volume (const char *role)
+{
+    SubscribeItem   *item           = NULL;
+    gchar           *obj_path       = NULL;
+    DBusMessage     *msg            = NULL;
+    DBusMessage     *reply          = NULL;
+    const gchar     *iface          = STREAM_ENTRY_IF;
+    const gchar     *addr           = "Volume";
+    int              current_type;
+    int              channel_count  = 0;
+    uint32_t         volume_max     = 0;
+    DBusMessageIter  iter;
+    DBusMessageIter  iter_variant;
+    DBusMessageIter  iter_array;
+    DBusMessageIter  iter_struct;
+    DBusError        error;
+
+    if (!volume_bus || !role)
+        return;
+
+    dbus_error_init (&error);
+
+    if (!(obj_path = get_object_path (role)))
+        goto done;
+
+    msg = dbus_message_new_method_call(STREAM_ENTRY_IF,
+                                       obj_path,
+                                       DBUS_PROPERTIES_IF,
+                                       "Get");
+
+    if (msg == NULL)
+        goto done;
+
+    if (!dbus_message_append_args(msg,
+                                  DBUS_TYPE_STRING, &iface,
+                                  DBUS_TYPE_STRING, &addr,
+                                  DBUS_TYPE_INVALID))
+        goto done;
+
+    reply = dbus_connection_send_with_reply_and_block (volume_bus,
+                                                       msg, -1, &error);
+
+    if (!reply) {
+        if (dbus_error_is_set (&error)) {
+            N_WARNING (LOG_CAT "couldn't get volume for %s: %s",
+                               obj_path, error.message);
+        }
+
+        goto done;
+    }
+
+    dbus_message_iter_init(reply, &iter);
+
+    /* Volumes are in variant containing an array of structs of
+     * uint32 pair, a[(channel_position,channel_volume)] */
+    while ((current_type = dbus_message_iter_get_arg_type(&iter)) != DBUS_TYPE_INVALID) {
+
+        if (current_type == DBUS_TYPE_VARIANT) {
+            dbus_message_iter_recurse(&iter, &iter_variant);
+
+            if (dbus_message_iter_get_arg_type(&iter_variant) == DBUS_TYPE_ARRAY) {
+                dbus_message_iter_recurse(&iter_variant, &iter_array);
+
+                if (dbus_message_iter_get_arg_type(&iter_array) == DBUS_TYPE_STRUCT) {
+                    dbus_message_iter_recurse(&iter_array, &iter_struct);
+
+                    if (dbus_message_iter_get_arg_type(&iter_struct) == DBUS_TYPE_UINT32) {
+                        dbus_uint32_t pos;
+                        dbus_uint32_t vol;
+                        dbus_message_iter_get_basic(&iter_struct, &pos);
+                        dbus_message_iter_next(&iter_struct);
+                        dbus_message_iter_get_basic(&iter_struct, &vol);
+                        if (vol > volume_max)
+                            volume_max = vol;
+                        channel_count++;
+                    }
+                }
+            }
+        }
+
+        dbus_message_iter_next(&iter);
+    }
+
+    if (channel_count > 0) {
+        if (volume_max > VOLUME_SCALE_VALUE)
+            volume_max = VOLUME_SCALE_VALUE;
+        if ((item = g_hash_table_lookup (object_map, obj_path))) {
+            N_DEBUG (LOG_CAT "post volume get for stream %s (%s) : %u",
+                             item->stream_name, item->object_path, volume_max);
+            subscribe_callback (item->stream_name, FROM_PA_VOL(volume_max), item->data, subscribe_userdata);
+        }
+    }
+
+done:
+    dbus_error_free (&error);
+
+    g_free (obj_path);
+    if (reply) dbus_message_unref (reply);
+    if (msg)   dbus_message_unref (msg);
 }
 
 static void
@@ -650,23 +777,35 @@ update_object_map_listen ()
 static void
 process_queued_ops ()
 {
-    QueueItem *queued_volume = NULL;
+    QueueItem *op = NULL;
 
-    while ((queued_volume = g_queue_pop_head (volume_queue)) != NULL) {
-        N_DEBUG (LOG_CAT "processing queued volume for role '%s', volume %d ",
-            queued_volume->role, queued_volume->volume);
-        add_entry (queued_volume->role, queued_volume->volume);
-
-        g_free (queued_volume->role);
-        g_slice_free (QueueItem, queued_volume);
-    }
-
-    // listen for objects here
+    /* listen for objects here */
     if (queue_subscribe) {
         listen_for_signal (NEW_ENTRY_SIGNAL, NULL);
         listen_for_signal (ENTRY_REMOVED_SIGNAL, NULL);
+        listen_for_signal (MEDIA_STATE_SIGNAL, NULL);
         update_object_map_listen ();
         queue_subscribe = FALSE;
+    }
+
+    while ((op = g_queue_pop_head (volume_queue)) != NULL) {
+        N_DEBUG (LOG_CAT "processing queued volume for role:%s type:%u volume:%d ",
+                         op->role, op->type, op->volume);
+
+        switch (op->type) {
+            case QUEUE_ITEM_TYPE_SET:
+                add_entry (op->role, op->volume);
+                break;
+            case QUEUE_ITEM_TYPE_GET:
+                get_entry_volume (op->role);
+                break;
+            default:
+                g_assert (0);
+                break;
+        }
+
+        g_free (op->role);
+        g_slice_free (QueueItem, op);
     }
 }
 
@@ -829,25 +968,51 @@ volume_controller_shutdown ()
     }
 }
 
-int
-volume_controller_update (const char *role, int volume)
+static void
+queue_op (const char *role, guint type, int volume)
 {
     QueueItem *item = NULL;
 
+    N_DEBUG (LOG_CAT "queueing op type: %s role: '%s' volume: '%d'",
+                     type == QUEUE_ITEM_TYPE_SET ? "SET" : "GET", role, volume);
+
+    item = g_slice_new0 (QueueItem);
+    item->role   = g_strdup (role);
+    item->type   = type;
+    item->volume = volume;
+    /* apply set ops before gets, to be up to date with get values */
+    if (type == QUEUE_ITEM_TYPE_SET)
+        g_queue_push_head (volume_queue, item);
+    else
+        g_queue_push_tail (volume_queue, item);
+}
+
+int
+volume_controller_update (const char *role, int volume)
+{
     if (!role)
         return FALSE;
 
     if (!volume_bus) {
-        N_DEBUG (LOG_CAT "volume controller not ready, queueing op.");
-
-        item = g_slice_new0 (QueueItem);
-        item->role   = g_strdup (role);
-        item->volume = volume;
-        g_queue_push_tail (volume_queue, item);
+        queue_op (role, QUEUE_ITEM_TYPE_SET, volume);
         return TRUE;
     }
 
     return add_entry (role, volume);
+}
+
+void
+volume_controller_get_volume (const char *role)
+{
+    if (!role)
+        return;
+
+    if (!volume_bus) {
+        queue_op (role, QUEUE_ITEM_TYPE_GET, 0);
+        return;
+    }
+
+    get_entry_volume (role);
 }
 
 void
@@ -886,6 +1051,7 @@ volume_controller_subscribe  (const char *stream_name, void *data)
     if (first && volume_bus) {
         listen_for_signal (NEW_ENTRY_SIGNAL, NULL);
         listen_for_signal (ENTRY_REMOVED_SIGNAL, NULL);
+        listen_for_signal (MEDIA_STATE_SIGNAL, NULL);
     }
 
     if (volume_bus)
@@ -918,6 +1084,7 @@ volume_controller_unsubscribe (const char *stream_name)
         if (volume_bus) {
             stop_listen_for_signal (NEW_ENTRY_SIGNAL);
             stop_listen_for_signal (ENTRY_REMOVED_SIGNAL);
+            stop_listen_for_signal (MEDIA_STATE_SIGNAL);
         }
         g_hash_table_unref (subscribe_map);
         subscribe_map = NULL;
@@ -931,4 +1098,11 @@ volume_controller_set_subscribe_cb (volume_controller_subscribe_cb cb, void *use
 {
     subscribe_callback = cb;
     subscribe_userdata = userdata;
+}
+
+void
+volume_controller_set_media_state_subscribe_cb (media_state_subscribe_cb cb, void *userdata)
+{
+    media_state_callback = cb;
+    media_state_userdata = userdata;
 }

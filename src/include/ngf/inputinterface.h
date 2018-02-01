@@ -88,4 +88,16 @@ int    n_input_interface_pause_request (NInputInterface *iface, NRequest *reques
  */
 void   n_input_interface_stop_request  (NInputInterface *iface, NRequest *request, guint timeout);
 
+/** Stores userdata for the interface
+ * @param iface NInputInterface structure
+ * @param userdata Interface userdata to store
+ */
+void   n_input_interface_set_userdata (NInputInterface *iface, void *userdata);
+
+/** Returns userdata stored to the interface
+ * @param iface NInputInterface structure
+ * @return Userdata for the interface
+ */
+void*  n_input_interface_get_userdata (NInputInterface *iface);
+
 #endif /* N_INPUT_INTERFACE_H */

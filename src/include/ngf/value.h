@@ -24,6 +24,12 @@
 
 #include <glib.h>
 
+#define N_VALUE_STR_STRING  "(string)"
+#define N_VALUE_STR_INT     "(int)"
+#define N_VALUE_STR_UINT    "(uint)"
+#define N_VALUE_STR_BOOL    "(bool)"
+#define N_VALUE_STR_POINTER "(pointer)"
+
 /** NValue type enum. Used in n_value_type */
 typedef enum
 {

@@ -1,7 +1,7 @@
 bin_PROGRAMS = ngfd
 
-ngfd_CFLAGS = $(NGFD_CFLAGS) -I$(top_srcdir)/src/include
-ngfd_LDFLAGS = $(NGFD_LIBS) -lrt
+ngfd_CFLAGS = $(NGFD_CFLAGS) $(DBUS_CFLAGS) -I$(top_srcdir)/src/include
+ngfd_LDFLAGS = $(NGFD_LIBS) $(DBUS_LIBS) -lrt
 
 ngfd_SOURCES =                \
     main.c                    \
@@ -13,6 +13,7 @@ ngfd_SOURCES =                \
     core.c                    \
     core-hooks.h              \
     core-hooks.c              \
+    haptic-internal.h         \
     haptic.c                  \
     hook.h                    \
     hook.c                    \
@@ -31,11 +32,17 @@ ngfd_SOURCES =                \
     value.c                   \
     proplist.h                \
     proplist.c                \
+    eventlist-internal.h      \
+    eventlist.c               \
     event-internal.h          \
     event.h                   \
     event.c                   \
+    eventrule-internal.h      \
+    eventrule.c               \
     request-internal.h        \
     request.h                 \
     request.c                 \
+    core-dbus-internal.h      \
+    core-dbus.c               \
     log.h                     \
     log.c

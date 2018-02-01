@@ -26,10 +26,14 @@
 #include <dirent.h>
 
 #include <ngf/log.h>
+#include <ngf/core-dbus.h>
 #include "core-internal.h"
 #include "event-internal.h"
+#include "eventlist-internal.h"
 #include "request-internal.h"
 #include "context-internal.h"
+#include "core-dbus-internal.h"
+#include "haptic-internal.h"
 
 #define LOG_CAT  "core: "
 
@@ -39,28 +43,20 @@
 #define PLUGIN_CONF_PATH      "plugins.d"
 #define EVENT_CONF_PATH       "events.d"
 
-typedef struct _NEventMatchResult
-{
-    NRequest *request;
-    NContext *context;
-    gboolean  has_match;
-    gboolean  skip_rest;
-} NEventMatchResult;
+#define CORE_CONF_KEYTYPES    "keytypes"
 
 static gchar*     n_core_get_path               (const char *key, const char *default_path);
 static NProplist* n_core_load_params            (NCore *core, const char *plugin_name);
-static NPlugin*   n_core_load_plugin            (NCore *core, const char *plugin_name);
+static NPlugin*   n_core_open_plugin            (NCore *core, const char *plugin_name);
+static int        n_core_init_plugin            (NPlugin *plugin, gboolean required);
 static void       n_core_unload_plugin          (NCore *core, NPlugin *plugin);
-static void       n_core_free_event_list_cb     (gpointer in_key, gpointer in_data, gpointer userdata);
-static gint       n_core_sort_event_cb          (gconstpointer a, gconstpointer b);
-static void       n_core_dump_value_cb          (const char *key, const NValue *value, gpointer userdata);
 static void       n_core_parse_events_from_file (NCore *core, const char *filename);
 static int        n_core_parse_events           (NCore *core);
 static void       n_core_parse_keytypes         (NCore *core, GKeyFile *keyfile);
 static void       n_core_parse_sink_order       (NCore *core, GKeyFile *keyfile);
 static int        n_core_parse_configuration    (NCore *core);
-static void       n_core_match_event_rule_cb    (const char *key, const NValue *value, gpointer userdata);
 
+static GSList*    tmp_plugin_conf_files;
 
 
 static gchar*
@@ -78,21 +74,17 @@ n_core_get_path (const char *key, const char *default_path)
     return g_strdup (source);
 }
 
-static GSList *plugin_conf_files = NULL;
-
 static GSList*
-n_core_plugin_conf_files (NCore *core)
+n_core_conf_files_from_path (const char *base_path, const char *path)
 {
-    gchar          *conf_path = NULL;
-    GDir           *conf_dir  = NULL;
-    const gchar    *filename  = NULL;
-    gchar          *full_name = NULL;
-    GError         *error     = NULL;
+    GSList         *conf_files  = NULL;
+    gchar          *conf_path   = NULL;
+    GDir           *conf_dir    = NULL;
+    const gchar    *filename    = NULL;
+    gchar          *full_name   = NULL;
+    GError         *error       = NULL;
 
-    if (plugin_conf_files)
-        return plugin_conf_files;
-
-    conf_path = g_build_path (G_DIR_SEPARATOR_S, core->conf_path, PLUGIN_CONF_PATH, NULL);
+    conf_path = g_build_path (G_DIR_SEPARATOR_S, base_path, path, NULL);
     conf_dir  = g_dir_open (conf_path, 0, &error);
 
     if (!conf_dir) {
@@ -103,29 +95,43 @@ n_core_plugin_conf_files (NCore *core)
     }
 
     while ((filename = g_dir_read_name (conf_dir))) {
+        if (!g_str_has_suffix (filename, ".ini"))
+            continue;
+
         full_name = g_build_filename (conf_path, filename, NULL);
 
         if (g_file_test (full_name, G_FILE_TEST_IS_REGULAR))
-            plugin_conf_files = g_slist_append (plugin_conf_files, full_name);
+            conf_files = g_slist_append (conf_files, full_name);
         else
             g_free (full_name);
     }
 
-    if (plugin_conf_files)
-        plugin_conf_files = g_slist_sort (plugin_conf_files, (GCompareFunc) g_strcmp0);
+    if (conf_files)
+        conf_files = g_slist_sort (conf_files, (GCompareFunc) g_strcmp0);
 
     g_free (conf_path);
     g_dir_close (conf_dir);
 
-    return plugin_conf_files;
+    return conf_files;
+}
+
+static GSList*
+n_core_plugin_conf_files (NCore *core)
+{
+    if (tmp_plugin_conf_files)
+        return tmp_plugin_conf_files;
+
+    tmp_plugin_conf_files = n_core_conf_files_from_path (core->conf_path, PLUGIN_CONF_PATH);
+
+    return tmp_plugin_conf_files;
 }
 
 static void
 n_core_plugin_conf_files_done ()
 {
-    if (plugin_conf_files) {
-        g_slist_free_full (plugin_conf_files, g_free);
-        plugin_conf_files = NULL;
+    if (tmp_plugin_conf_files) {
+        g_slist_free_full (tmp_plugin_conf_files, g_free);
+        tmp_plugin_conf_files = NULL;
     }
 }
 
@@ -189,6 +195,9 @@ n_core_load_params (NCore *core, const char *plugin_name)
             continue;
         }
 
+        /* Extend known keytypes from plugin configuration. */
+        n_core_parse_keytypes (core, keyfile);
+
         for (iter = keys; *iter; ++iter) {
             if ((value = g_key_file_get_string (keyfile, plugin_name, *iter, NULL)) == NULL)
                 continue;
@@ -202,6 +211,7 @@ n_core_load_params (NCore *core, const char *plugin_name)
 
         g_strfreev (keys);
         g_key_file_remove_group (keyfile, plugin_name, NULL);
+        g_key_file_remove_group (keyfile, CORE_CONF_KEYTYPES, NULL);
     }
 
     g_key_file_free (keyfile);
@@ -212,7 +222,7 @@ n_core_load_params (NCore *core, const char *plugin_name)
 }
 
 static NPlugin*
-n_core_load_plugin (NCore *core, const char *plugin_name)
+n_core_open_plugin (NCore *core, const char *plugin_name)
 {
     g_assert (core != NULL);
     g_assert (plugin_name != NULL);
@@ -224,16 +234,13 @@ n_core_load_plugin (NCore *core, const char *plugin_name)
     filename  = g_strdup_printf ("libngfd_%s.so", plugin_name);
     full_path = g_build_filename (core->plugin_path, filename, NULL);
 
-    if (!(plugin = n_plugin_load (full_path)))
+    if (!(plugin = n_plugin_open (full_path)))
         goto done;
 
     plugin->core   = core;
     plugin->params = n_core_load_params (core, plugin_name);
 
-    if (!plugin->load (plugin))
-        goto done;
-
-    N_DEBUG (LOG_CAT "loaded plugin '%s'", plugin_name);
+    N_DEBUG (LOG_CAT "opened plugin '%s' (%s)", plugin->get_name (), filename);
 
     g_free (full_path);
     g_free (filename);
@@ -241,7 +248,7 @@ n_core_load_plugin (NCore *core, const char *plugin_name)
     return plugin;
 
 done:
-    N_ERROR (LOG_CAT "unable to load plugin '%s'", plugin_name);
+    N_ERROR (LOG_CAT "unable to open plugin '%s'", plugin_name);
 
     if (plugin)
         n_plugin_unload (plugin);
@@ -250,6 +257,25 @@ done:
     g_free (filename);
 
     return NULL;
+}
+
+static int
+n_core_init_plugin (NPlugin *plugin, gboolean required)
+{
+    int ret = FALSE;
+
+    g_assert (plugin != NULL);
+
+    if (!(ret = n_plugin_init (plugin))) {
+        if (required)
+            N_ERROR (LOG_CAT "unable to init required plugin '%s'", plugin->get_name());
+        else
+            N_INFO (LOG_CAT "unable to init optional plugin '%s'", plugin->get_name());
+
+        n_plugin_unload (plugin);
+    }
+
+    return ret;
 }
 
 static void
@@ -278,32 +304,14 @@ n_core_new (int *argc, char **argv)
     core->conf_path   = n_core_get_path ("NGF_CONF_PATH", DEFAULT_CONF_PATH);
     core->plugin_path = n_core_get_path ("NGF_PLUGIN_PATH", DEFAULT_PLUGIN_PATH);
     core->context     = n_context_new ();
-
-    core->event_table = g_hash_table_new_full (g_str_hash, g_str_equal,
-        g_free, NULL);
+    core->dbus        = n_dbus_helper_new (core);
+    core->haptic      = n_haptic_new (core);
+    core->eventlist   = n_event_list_new (core);
 
     core->key_types = g_hash_table_new_full (g_str_hash, g_str_equal,
         g_free, NULL);
 
     return core;
-}
-
-static void
-n_core_free_event_list_cb (gpointer in_key, gpointer in_data, gpointer userdata)
-{
-    (void) in_key;
-    (void) userdata;
-
-    GList      *event_list = (GList*) in_data;
-    GList      *iter       = NULL;
-    NEvent     *event      = NULL;
-
-    for (iter = g_list_first (event_list); iter; iter = g_list_next (iter)) {
-        event = (NEvent*) iter->data;
-        n_event_free (event);
-    }
-
-    g_list_free (event_list);
 }
 
 void
@@ -321,10 +329,9 @@ n_core_free (NCore *core)
 
     g_hash_table_destroy (core->key_types);
 
-    g_list_free          (core->event_list);
-    g_hash_table_foreach (core->event_table, n_core_free_event_list_cb, NULL);
-    g_hash_table_destroy (core->event_table);
-
+    n_event_list_free (core->eventlist);
+    n_haptic_free (core->haptic);
+    n_dbus_helper_free (core->dbus);
     n_context_free (core->context);
     g_free (core->plugin_path);
     g_free (core->conf_path);
@@ -368,10 +375,14 @@ n_core_initialize (NCore *core)
     g_assert (core->conf_path != NULL);
     g_assert (core->plugin_path != NULL);
 
+    GList            *required_plugins = NULL;
+    GList            *optional_plugins = NULL;
     NSinkInterface  **sink   = NULL;
     NInputInterface **input  = NULL;
     NPlugin          *plugin = NULL;
     GList            *p      = NULL;
+
+    tmp_plugin_conf_files    = NULL;
 
     /* setup hooks */
 
@@ -391,36 +402,50 @@ n_core_initialize (NCore *core)
         goto failed_init;
     }
 
-    /* load events from the given event path. */
-
-    if (!n_core_parse_events (core))
-        goto failed_init;
-
     /* load all plugins */
 
     /* first mandatory plugins */
     for (p = g_list_first (core->required_plugins); p; p = g_list_next (p)) {
-        if (!(plugin = n_core_load_plugin (core, (const char*) p->data)))
+        if (!(plugin = n_core_open_plugin (core, (const char*) p->data)))
             goto failed_init;
 
-        core->plugins = g_list_append (core->plugins, plugin);
+        required_plugins = g_list_append (required_plugins, plugin);
     }
 
     /* then optional plugins */
     for (p = g_list_first (core->optional_plugins); p; p = g_list_next (p)) {
-        if ((plugin = n_core_load_plugin (core, (const char*) p->data)))
-            core->plugins = g_list_append (core->plugins, plugin);
+        if ((plugin = n_core_open_plugin (core, (const char*) p->data)))
+            optional_plugins = g_list_append (optional_plugins, plugin);
 
         if (!plugin)
-            N_INFO (LOG_CAT "optional plugin %s not loaded.", p->data);
+            N_INFO (LOG_CAT "optional plugin %s not opened.", p->data);
     }
 
     /* Clear temporary conf file list. */
     n_core_plugin_conf_files_done ();
 
-    /* setup the sink priorities based on the sink-order */
+    /* load events from the given event path. */
 
-    n_core_set_sink_priorities (core->sinks, core->sink_order);
+    if (!n_core_parse_events (core))
+        goto failed_init;
+
+    /* initialize required plugins */
+    for (p = required_plugins; p; p = g_list_next (p)) {
+        if (!n_core_init_plugin ((NPlugin *) p->data, TRUE))
+            goto failed_init;
+
+        core->plugins = g_list_append (core->plugins, p->data);
+    }
+
+    g_list_free (required_plugins);
+
+    /* initialize optional plugins */
+    for (p = optional_plugins; p; p = g_list_next (p)) {
+        if (n_core_init_plugin ((NPlugin *) p->data, FALSE))
+            core->plugins = g_list_append (core->plugins, p->data);
+    }
+
+    g_list_free (optional_plugins);
 
     /* initialize all sinks. if no sinks, we're done. */
 
@@ -428,6 +453,10 @@ n_core_initialize (NCore *core)
         N_ERROR (LOG_CAT "no plugin has registered sink interface");
         goto failed_init;
     }
+
+    /* setup the sink priorities based on the sink-order */
+
+    n_core_set_sink_priorities (core->sinks, core->sink_order);
 
     for (sink = core->sinks; *sink; ++sink) {
         if ((*sink)->funcs.initialize && !(*sink)->funcs.initialize (*sink)) {
@@ -492,6 +521,8 @@ n_core_shutdown (NCore *core)
             if ((*sink)->funcs.shutdown)
                 (*sink)->funcs.shutdown (*sink);
         }
+        g_free (core->sinks);
+        core->sinks = NULL;
     }
 
     if (core->plugins) {
@@ -526,6 +557,7 @@ n_core_register_sink (NCore *core, const NSinkInterfaceDecl *iface)
     NSinkInterface *sink = NULL;
     sink = g_new0 (NSinkInterface, 1);
     sink->name  = iface->name;
+    sink->type  = iface->type;
     sink->core  = core;
     sink->funcs = *iface;
 
@@ -562,80 +594,6 @@ n_core_register_input (NCore *core, const NInputInterfaceDecl *iface)
     N_DEBUG (LOG_CAT "input interface '%s' registered", input->name);
 }
 
-static gint
-n_core_sort_event_cb (gconstpointer a, gconstpointer b)
-{
-    const NEvent *ea = (const NEvent*) a;
-    const NEvent *eb = (const NEvent*) b;
-
-    guint numa = ea->rules ? n_proplist_size (ea->rules) : 0;
-    guint numb = eb->rules ? n_proplist_size (eb->rules) : 0;
-
-    return (numa > numb) ? -1 : ((numa < numb) ? 1 : 0);
-}
-
-static void
-n_core_dump_value_cb (const char *key, const NValue *value, gpointer userdata)
-{
-    (void) userdata;
-
-    gchar *value_str = n_value_to_string ((NValue*) value);
-    N_DEBUG (LOG_CAT "+ %s = %s", key, value_str);
-    g_free (value_str);
-}
-
-void
-n_core_add_event (NCore *core, NEvent *event)
-{
-    g_assert (core != NULL);
-    g_assert (event != NULL);
-
-    GList  *event_list = NULL;
-    GList  *iter       = NULL;
-    NEvent *found      = NULL;
-
-    /* get the event list for the specific event name. */
-
-    event_list = g_hash_table_lookup (core->event_table, event->name);
-
-    /* iterate through the event list and try to find an event that has the
-       same rules. */
-
-    for (iter = g_list_first (event_list); iter; iter = g_list_next (iter)) {
-        found = (NEvent*) iter->data;
-
-        if (n_proplist_match_exact (found->rules, event->rules)) {
-            /* match found. merge the properties to the pre-existing event
-               and free the new one. */
-
-            N_DEBUG (LOG_CAT "merging event '%s'", event->name);
-            n_proplist_foreach (event->rules, n_core_dump_value_cb, NULL);
-
-            n_proplist_merge (found->properties, event->properties);
-            n_event_free (event);
-
-            return;
-        }
-    }
-
-    /* completely new event, add it to the list and sort it. */
-
-    N_DEBUG (LOG_CAT "new event '%s'", event->name);
-    if (n_proplist_size (event->rules) > 0)
-        n_proplist_foreach (event->rules, n_core_dump_value_cb, NULL);
-    else
-        N_DEBUG (LOG_CAT "+ default");
-
-    N_DEBUG (LOG_CAT "properties");
-    n_proplist_foreach (event->properties, n_core_dump_value_cb, NULL);
-
-    event_list = g_list_append (event_list, event);
-    event_list = g_list_sort (event_list, n_core_sort_event_cb);
-    g_hash_table_replace (core->event_table, g_strdup (event->name), event_list);
-
-    core->event_list = g_list_append (core->event_list, event);
-}
-
 static void
 n_core_parse_events_from_file (NCore *core, const char *filename)
 {
@@ -644,9 +602,6 @@ n_core_parse_events_from_file (NCore *core, const char *filename)
 
     GKeyFile  *keyfile    = NULL;
     GError    *error      = NULL;
-    gchar    **group_list = NULL;
-    gchar    **group      = NULL;
-    NEvent    *event      = NULL;
 
     keyfile = g_key_file_new ();
     if (!g_key_file_load_from_file (keyfile, filename, G_KEY_FILE_NONE, &error)) {
@@ -656,50 +611,39 @@ n_core_parse_events_from_file (NCore *core, const char *filename)
         return;
     }
 
-    /* each unique group is considered as an event, even if split within
-       separate files. */
-
     N_DEBUG (LOG_CAT "processing event file '%s'", filename);
 
-    group_list = g_key_file_get_groups (keyfile, NULL);
-    for (group = group_list; *group; ++group) {
-        event = n_event_new_from_group (core, keyfile, *group);
-        if (event)
-            n_core_add_event (core, event);
-    }
+    n_event_list_parse_keyfile (core->eventlist, keyfile);
 
-    g_strfreev      (group_list);
     g_key_file_free (keyfile);
 }
 
 static int
 n_core_parse_events (NCore *core)
 {
-    gchar         *path       = NULL;
-    DIR           *parent_dir = NULL;
-    struct dirent *walk       = NULL;
+    GSList        *conf_files = NULL;
+    GSList        *i          = NULL;
     gchar         *filename   = NULL;
 
     /* find all the events within the given path */
+    conf_files = n_core_conf_files_from_path (core->conf_path, EVENT_CONF_PATH);
 
-    path = g_build_filename (core->conf_path, EVENT_CONF_PATH, NULL);
-    parent_dir = opendir (path);
-    if (!parent_dir) {
-        N_ERROR (LOG_CAT "failed to open event path '%s'", path);
-        g_free (path);
+    if (!conf_files) {
+        N_ERROR (LOG_CAT "no events defined.");
         return FALSE;
     }
 
-    while ((walk = readdir (parent_dir)) != NULL) {
-        if (walk->d_type & DT_REG) {
-            filename = g_build_filename (path, walk->d_name, NULL);
-            n_core_parse_events_from_file (core, filename);
-            g_free (filename);
-        }
+    for (i = conf_files; i; i = g_slist_next (i)) {
+        filename = i->data;
+        n_core_parse_events_from_file (core, filename);
     }
 
-    closedir (parent_dir);
-    g_free   (path);
+    g_slist_free_full (conf_files, g_free);
+
+    if (n_event_list_size (core->eventlist) == 0) {
+        N_ERROR (LOG_CAT "no valid events defined.");
+        return FALSE;
+    }
 
     return TRUE;
 }
@@ -717,12 +661,12 @@ n_core_parse_keytypes (NCore *core, GKeyFile *keyfile)
 
     /* load all the event configuration key entries. */
 
-    conf_keys = g_key_file_get_keys (keyfile, "keytypes", NULL, NULL);
+    conf_keys = g_key_file_get_keys (keyfile, CORE_CONF_KEYTYPES, NULL, NULL);
     if (!conf_keys)
         return;
 
     for (key = conf_keys; *key; ++key) {
-        value = g_key_file_get_string (keyfile, "keytypes", *key, NULL);
+        value = g_key_file_get_string (keyfile, CORE_CONF_KEYTYPES, *key, NULL);
         if (!value) {
             N_WARNING (LOG_CAT "no datatype defined for key '%s'", *key);
             continue;
@@ -835,111 +779,24 @@ n_core_parse_configuration (NCore *core)
     return TRUE;
 }
 
-static const char*
-n_core_match_and_strip_prefix (const char *value, const char *prefix)
-{
-    g_assert (value != NULL);
-    g_assert (prefix != NULL);
-
-    if (g_str_has_prefix (value, prefix))
-        return (const char*) (value + strlen (prefix));
-
-    return NULL;
-}
-
-static void
-n_core_match_event_rule_cb (const char *key, const NValue *value,
-                            gpointer userdata)
-{
-    NEventMatchResult *result      = (NEventMatchResult*) userdata;
-    NRequest          *request     = result->request;
-    NValue            *match_value = NULL;
-    const char        *context_key = NULL;
-    const char        *str         = NULL;
-
-    if (result->skip_rest)
-        return;
-
-    /* assume positive result */
-
-    result->has_match = TRUE;
-
-    /* if the key has a context@ prefix, then we will lookup the value from
-       the current context. */
-
-    context_key = n_core_match_and_strip_prefix (key, "context@");
-    match_value = context_key ?
-        (NValue*) n_context_get_value (result->context, context_key) :
-        (NValue*) n_proplist_get (request->properties, key);
-
-    /* if match value has a *, then any value for request will do. */
-
-    str = n_value_get_string ((NValue*) value);
-    if (str && g_str_equal (str, "*"))
-        return;
-
-    /* the moment we find a key and value that does not match, we're done
-       here. */
-
-    if (!match_value || !n_value_equals (value, match_value)) {
-        result->has_match  = FALSE;
-        result->skip_rest  = TRUE;
-    }
-}
 
 NEvent*
 n_core_evaluate_request (NCore *core, NRequest *request)
 {
+    NEvent *event;
+
     g_assert (core != NULL);
     g_assert (request != NULL);
-
-    NEvent *event      = NULL;
-    NEvent *found      = NULL;
-    GList  *event_list = NULL;
-    GList  *iter       = NULL;
-
-    NEventMatchResult result;
 
     N_DEBUG (LOG_CAT "evaluating events for request '%s'",
         request->name);
 
-    /* find the list of events that have the same name. */
-
-    event_list = (GList*) g_hash_table_lookup (core->event_table, request->name);
-    if (!event_list)
-        return NULL;
-
-    /* for each event, match the properties. */
-
-    for (iter = g_list_first (event_list); iter; iter = g_list_next (iter)) {
-        event = (NEvent*) iter->data;
-
-        /* default event with no properties, accept. */
-
-        if (n_proplist_size (event->rules) == 0) {
-            found = event;
-            break;
-        }
-
-        result.request    = request;
-        result.context    = core->context;
-        result.has_match  = FALSE;
-        result.skip_rest  = FALSE;
-
-        n_proplist_foreach (event->rules, n_core_match_event_rule_cb, &result);
-
-        if (result.has_match) {
-            found = event;
-            break;
-        }
+    if ((event = n_event_list_match_request (core->eventlist, request))) {
+        N_DEBUG (LOG_CAT "evaluated to '%s'", event->name);
+        n_event_rules_dump (event, LOG_CAT);
     }
 
-    if (found) {
-        N_DEBUG (LOG_CAT "evaluated to '%s'", found->name);
-        n_proplist_foreach (event->rules, n_core_dump_value_cb, NULL);
-    }
-
-    return found;
+    return event;
 }
 
 NContext*
@@ -972,7 +829,7 @@ n_core_get_events (NCore *core)
     if (!core)
         return NULL;
 
-    return core->event_list;
+    return n_event_list_get_events (core->eventlist);
 }
 
 int

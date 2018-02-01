@@ -28,23 +28,40 @@
 
 typedef struct _NContextSubscriber
 {
-    gchar    *key;
     gpointer  userdata;
     NContextValueChangeFunc callback;
 } NContextSubscriber;
 
+typedef struct _NContextKey
+{
+    GList      *subscribers;    /* value:NContextSubscriber     */
+} NContextKey;
+
 struct _NContext
 {
     NProplist  *values;
-    GList      *subscribers;
+    GHashTable *keys;           /* key:gchar value:NContextKey  */
+    GList      *all_keys;       /* value:NContextSubscriber     */
 };
+
+static void
+broadcast_list (NContext *context, GList *list, const char *key,
+                const NValue *old_value, const NValue *new_value)
+{
+    NContextSubscriber *subscriber = NULL;
+    GList              *iter       = NULL;
+
+    for (iter = g_list_first (list); iter; iter = g_list_next (iter)) {
+        subscriber = (NContextSubscriber*) iter->data;
+        subscriber->callback (context, key, old_value, new_value, subscriber->userdata);
+    }
+}
 
 static void
 n_context_broadcast_change (NContext *context, const char *key,
                             const NValue *old_value, const NValue *new_value)
 {
-    NContextSubscriber *subscriber = NULL;
-    GList              *iter       = NULL;
+    NContextKey        *context_key= NULL;
     gchar              *old_str    = NULL;
     gchar              *new_str    = NULL;
 
@@ -57,14 +74,11 @@ n_context_broadcast_change (NContext *context, const char *key,
     g_free (new_str);
     g_free (old_str);
 
-    for (iter = g_list_first (context->subscribers); iter; iter = g_list_next (iter)) {
-        subscriber = (NContextSubscriber*) iter->data;
+    if ((context_key = g_hash_table_lookup (context->keys, key)))
+        broadcast_list (context, context_key->subscribers, key, old_value, new_value);
 
-        if (!subscriber->key || (subscriber->key && g_str_equal (subscriber->key, key))) {
-            subscriber->callback (context, key, old_value, new_value, subscriber->userdata);
-        }
-    }
- }
+    broadcast_list (context, context->all_keys, key, old_value, new_value);
+}
 
 void
 n_context_set_value (NContext *context, const char *key,
@@ -95,43 +109,64 @@ n_context_subscribe_value_change (NContext *context, const char *key,
                                   NContextValueChangeFunc callback,
                                   void *userdata)
 {
-    NContextSubscriber *subscriber = NULL;
+    NContextKey        *context_key = NULL;
+    NContextSubscriber *subscriber  = NULL;
 
     if (!context || !callback)
         return FALSE;
 
-    subscriber = g_slice_new0 (NContextSubscriber);
-    subscriber->key      = g_strdup (key);
+    subscriber = g_new0 (NContextSubscriber, 1);
     subscriber->callback = callback;
     subscriber->userdata = userdata;
 
-    context->subscribers = g_list_append (context->subscribers, subscriber);
+    if (key) {
+        if (!(context_key = g_hash_table_lookup (context->keys, key))) {
+            context_key = g_new0 (NContextKey, 1);
+            g_hash_table_insert (context->keys, g_strdup (key), context_key);
+        }
+        context_key->subscribers = g_list_append (context_key->subscribers, subscriber);
+    } else
+        context->all_keys = g_list_append (context->all_keys, subscriber);
 
     N_DEBUG (LOG_CAT "subscriber added for key '%s'", key ? key : "<all keys>");
 
     return TRUE;
 }
 
+static void
+remove_from_list (GList **list, NContextValueChangeFunc callback)
+{
+    NContextSubscriber  *subscriber  = NULL;
+    GList               *iter        = NULL;
+
+    for (iter = g_list_first (*list); iter; iter = g_list_next (iter)) {
+        subscriber = (NContextSubscriber*) iter->data;
+
+        if (subscriber->callback == callback) {
+            *list = g_list_remove (*list, subscriber);
+            g_free (subscriber);
+            break;
+        }
+    }
+}
+
 void
 n_context_unsubscribe_value_change (NContext *context, const char *key,
                                     NContextValueChangeFunc callback)
 {
-    NContextSubscriber *subscriber = NULL;
-    GList *iter = NULL;
+    NContextKey *context_key  = NULL;
 
     if (!context || !key || !callback)
         return;
 
-    for (iter = g_list_first (context->subscribers); iter; iter = g_list_next (iter)) {
-        subscriber = (NContextSubscriber*) iter->data;
-
-        if (g_str_equal (subscriber->key, key) && subscriber->callback == callback) {
-            context->subscribers = g_list_remove (context->subscribers, subscriber);
-            g_free (subscriber->key);
-            g_slice_free (NContextSubscriber, subscriber);
-            break;
+    if (key) {
+        if ((context_key = g_hash_table_lookup (context->keys, key))) {
+            remove_from_list (&context_key->subscribers, callback);
+            if (!context_key->subscribers)
+                g_hash_table_remove (context->keys, key);
         }
-    }
+    } else
+        remove_from_list (&context->all_keys, callback);
 }
 
 NContext*
@@ -141,24 +176,16 @@ n_context_new ()
 
     context = g_new0 (NContext, 1);
     context->values = n_proplist_new ();
+    context->keys = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                           g_free, g_free);
     return context;
 }
 
 void
 n_context_free (NContext *context)
 {
-    NContextSubscriber *subscriber = NULL;
-    GList *iter = NULL;
-
-    for (iter = context->subscribers; iter; iter = g_list_next (iter)) {
-        subscriber = (NContextSubscriber*) iter->data;
-        g_free (subscriber->key);
-        g_slice_free (NContextSubscriber, subscriber);
-    }
-
-    g_list_free (context->subscribers);
-    context->subscribers = NULL;
-
+    g_list_free_full (context->all_keys, g_free);
+    g_hash_table_destroy (context->keys);
     n_proplist_free (context->values);
     g_free (context);
 }

@@ -43,6 +43,18 @@ NCore*           n_plugin_get_core       (NPlugin *plugin);
  */
 const NProplist* n_plugin_get_params     (NPlugin *plugin);
 
+/** Set userdata for plugin. This should be called only once per plugin init.
+ * @param plugin NPlugin structure
+ * @param userdata Plugin userdata
+ */
+void             n_plugin_set_userdata   (NPlugin *plugin, gpointer userdata);
+
+/** Get userdata for plugin.
+ * @param plugin NPlugin structure
+ * @return Userdata pointer stored for the plugin
+ */
+gpointer         n_plugin_get_userdata   (NPlugin *plugin);
+
 /** Register sink type plugin
  * @param plugin NPlugin structure
  * @param decl Plugin declaration in NSinkInterfaceDecl structure

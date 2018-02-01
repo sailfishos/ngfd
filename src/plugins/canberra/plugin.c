@@ -42,32 +42,35 @@ N_PLUGIN_NAME        ("canberra")
 N_PLUGIN_VERSION     ("0.1")
 N_PLUGIN_DESCRIPTION ("libcanberra plugin")
 
-static ca_context *c_context = NULL;
-static GHashTable *cached_samples = NULL;
-static gboolean support_cached_samples = TRUE;
+typedef struct sink_userdata {
+    ca_context *c_context;
+    GHashTable *cached_samples;
+    gboolean    support_cached_samples;
+} sink_userdata;
 
-static void canberra_disconnect ()
+
+static void canberra_disconnect (sink_userdata *u)
 {
-    if (c_context) {
-        ca_context_destroy (c_context);
-        c_context = NULL;
+    if (u->c_context) {
+        ca_context_destroy (u->c_context);
+        u->c_context = NULL;
     }
 }
 
-static int canberra_connect ()
+static int canberra_connect (sink_userdata *u)
 {
     int error;
 
-    if (c_context)
+    if (u->c_context)
         return TRUE;
 
-    g_hash_table_remove_all (cached_samples);
-    ca_context_create (&c_context);
-    error = ca_context_open (c_context);
+    g_hash_table_remove_all (u->cached_samples);
+    ca_context_create (&u->c_context);
+    error = ca_context_open (u->c_context);
     if (error) {
         N_WARNING (LOG_CAT "can't connect to canberra! %s", ca_strerror (error));
-        ca_context_destroy (c_context);
-        c_context = NULL;
+        ca_context_destroy (u->c_context);
+        u->c_context = NULL;
         return FALSE;
     }
 
@@ -77,27 +80,33 @@ static int canberra_connect ()
 static int
 canberra_sink_initialize (NSinkInterface *iface)
 {
-    (void) iface;
+    sink_userdata *u;
+
     N_DEBUG (LOG_CAT "sink initialize");
+
+    u = g_new0 (sink_userdata, 1);
 
     /* Only provide free function for key, since both key and value are same
      * string. */
-    cached_samples = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
-    support_cached_samples = TRUE;
-    canberra_connect ();
+    u->cached_samples = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+    u->support_cached_samples = TRUE;
+    canberra_connect (u);
+    n_sink_interface_set_userdata (iface, u);
     return TRUE;
 }
 
 static void
 canberra_sink_shutdown (NSinkInterface *iface)
 {
-    (void) iface;
+    sink_userdata *u = n_sink_interface_get_userdata (iface);
+
     N_DEBUG (LOG_CAT "sink shutdown");
 
-    canberra_disconnect ();
-    if (cached_samples) {
-        g_hash_table_destroy (cached_samples);
-        cached_samples = NULL;
+    if (u) {
+        canberra_disconnect (u);
+        if (u->cached_samples)
+            g_hash_table_destroy (u->cached_samples);
+        g_free (u);
     }
 }
 
@@ -154,13 +163,13 @@ proplist_to_structure_cb (const char *key, const NValue *value, gpointer userdat
     if (*prop_key == '\0')
         return;
 
-    prop_value = n_value_get_string ((NValue*) value);
+    prop_value = n_value_get_string (value);
     ca_proplist_sets (target, prop_key, prop_value);
 }
 
 static gboolean
 canberra_complete_cb (gpointer userdata) {
-    CanberraData *data = (CanberraData*) userdata;
+    CanberraData *data = userdata;
 
     data->complete_cb_id = 0;
     n_sink_interface_complete (data->iface, data->request);
@@ -171,55 +180,60 @@ canberra_complete_cb (gpointer userdata) {
 static int
 canberra_sink_play (NSinkInterface *iface, NRequest *request)
 {
-    CanberraData *data = (CanberraData*) n_request_get_data (request, CANBERRA_KEY);
-    (void) iface;
+    sink_userdata   *u;
+    CanberraData    *data;
+    const NProplist *props;
+    ca_proplist     *ca_props = 0;
+    int              error;
 
     N_DEBUG (LOG_CAT "sink play");
 
-    g_assert (data != NULL);
+    u = n_sink_interface_get_userdata (iface);
+    data = n_request_get_data (request, CANBERRA_KEY);
+
+    g_assert (u);
+    g_assert (data);
 
     if (!data->sound_enabled)
         goto complete;
 
-    if (canberra_connect () == FALSE)
+    if (canberra_connect (u) == FALSE)
         return FALSE;
 
-    NProplist *props = props = (NProplist*) n_request_get_properties (request);
-    ca_proplist *ca_props = 0;
-    int error;
+    props = n_request_get_properties (request);
     ca_proplist_create (&ca_props);
 
     /* TODO: don't hardcode */
     ca_proplist_sets (ca_props, CA_PROP_CANBERRA_XDG_THEME_NAME, "jolla-ambient");
     ca_proplist_sets (ca_props, CA_PROP_EVENT_ID, data->filename);
-    if (support_cached_samples)
+    if (u->support_cached_samples)
         ca_proplist_sets (ca_props, CA_PROP_CANBERRA_CACHE_CONTROL, "permanent");
+
+    if (u->support_cached_samples && !g_hash_table_contains(u->cached_samples, data->filename)) {
+        N_DEBUG (LOG_CAT "caching sample %s", data->filename);
+        error = ca_context_cache_full (u->c_context, ca_props);
+        if (error == CA_ERROR_NOTSUPPORTED) {
+            N_WARNING (LOG_CAT "sample caching not supported by backend. disabling for the duration of plugin.");
+            u->support_cached_samples = FALSE;
+        } else if (error != CA_SUCCESS) {
+            N_WARNING (LOG_CAT "canberra couldn't cache sample %s (%d: %s)", data->filename, -error, ca_strerror(error));
+            ca_proplist_destroy (ca_props);
+            canberra_disconnect (u);
+            return FALSE;
+        } else
+            g_hash_table_add (u->cached_samples, g_strdup(data->filename));
+    }
 
     /* convert all properties within the request that begin with
        "sound.stream." prefix. */
     n_proplist_foreach (props, proplist_to_structure_cb, ca_props);
 
-    if (support_cached_samples && !g_hash_table_contains(cached_samples, data->filename)) {
-        N_DEBUG (LOG_CAT "caching sample %s", data->filename);
-        error = ca_context_cache_full (c_context, ca_props);
-        if (error == CA_ERROR_NOTSUPPORTED) {
-            N_WARNING (LOG_CAT "sample caching not supported by backend. disabling for the duration of plugin.");
-            support_cached_samples = FALSE;
-        } else if (error != CA_SUCCESS) {
-            N_WARNING (LOG_CAT "canberra couldn't cache sample %s (%d: %s)", data->filename, -error, ca_strerror(error));
-            ca_proplist_destroy (ca_props);
-            canberra_disconnect ();
-            return FALSE;
-        } else
-            g_hash_table_add (cached_samples, g_strdup(data->filename));
-    }
-
-    error = ca_context_play_full (c_context, 0, ca_props, NULL, NULL);
+    error = ca_context_play_full (u->c_context, 0, ca_props, NULL, NULL);
     ca_proplist_destroy (ca_props);
 
     if (error != CA_SUCCESS) {
         N_WARNING (LOG_CAT "sink play had a warning: %s", ca_strerror (error));
-        canberra_disconnect ();
+        canberra_disconnect (u);
         return FALSE;
     }
 
@@ -253,6 +267,7 @@ N_PLUGIN_LOAD (plugin)
 
     static const NSinkInterfaceDecl decl = {
         .name       = "canberra",
+        .type       = N_SINK_INTERFACE_TYPE_AUDIO,
         .initialize = canberra_sink_initialize,
         .shutdown   = canberra_sink_shutdown,
         .can_handle = canberra_sink_can_handle,

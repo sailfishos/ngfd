@@ -26,7 +26,7 @@
 #define LOG_CAT "plugin: "
 
 NPlugin*
-n_plugin_load (const char *filename)
+n_plugin_open (const char *filename)
 {
     g_assert (filename != NULL);
 
@@ -60,6 +60,14 @@ n_plugin_load (const char *filename)
 fail_load:
     n_plugin_unload (plugin);
     return NULL;
+}
+
+int
+n_plugin_init (NPlugin *plugin)
+{
+    g_assert (plugin != NULL);
+
+    return plugin->load (plugin);
 }
 
 void
@@ -96,6 +104,22 @@ n_plugin_get_params (NPlugin *plugin)
         return NULL;
 
     return plugin->params;
+}
+
+void
+n_plugin_set_userdata (NPlugin *plugin, gpointer userdata)
+{
+    g_assert (plugin);
+
+    plugin->userdata = userdata;
+}
+
+gpointer
+n_plugin_get_userdata (NPlugin *plugin)
+{
+    g_assert (plugin);
+
+    return plugin->userdata;
 }
 
 void
