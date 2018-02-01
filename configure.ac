@@ -1,5 +1,5 @@
 AC_PREREQ(2.61)
-AC_INIT(ngfd, 0.92)
+AC_INIT(ngfd, 1.0)
 
 AC_CONFIG_MACRO_DIR([m4])
 AM_CONFIG_HEADER([config.h])
