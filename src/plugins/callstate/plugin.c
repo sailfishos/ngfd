@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#include <stdbool.h>
 #include <ngf/plugin.h>
 #include <ngf/core-dbus.h>
 #include <dbus/dbus.h>
@@ -29,21 +30,37 @@
 #define CALL_STATE_KEY "call_state.mode"
 
 N_PLUGIN_NAME        ("callstate")
-N_PLUGIN_VERSION     ("0.1")
+N_PLUGIN_VERSION     ("0.2")
 N_PLUGIN_DESCRIPTION ("Call state tracking plugin")
 
+typedef struct NCallState {
+    bool        active;
+    NContext   *context;
+} NCallState;
+
 static void
-update_context_call_state (NContext *context, const char *value)
+update_context_call_state (NCallState *callstate, const char *value)
 {
-    NValue *v = n_value_new ();
+    NValue *v;
+
+    if (callstate->active && (!g_strcmp0 (value, "ringing") || !g_strcmp0 (value, "active"))) {
+        /* When new call is incoming while there is an active call,
+         * MCE call state changes to ringing. For our purposes this
+         * still is "active" call, so don't post this state change
+         * to context. */
+        return;
+    }
+
+    callstate->active = !g_strcmp0 (value, "active");
+    v = n_value_new ();
     n_value_set_string (v, value);
-    n_context_set_value (context, CALL_STATE_KEY, v);
+    n_context_set_value (callstate->context, CALL_STATE_KEY, v);
 }
 
 static void
 query_call_state_notify_cb (NCore *core, DBusMessage *msg, void *userdata)
 {
-    NContext   *context         = userdata;
+    NCallState *u               = userdata;
     const char *call_state      = NULL;
     const char *emergency_state = NULL;
 
@@ -56,14 +73,14 @@ query_call_state_notify_cb (NCore *core, DBusMessage *msg, void *userdata)
         N_DEBUG (LOG_CAT "initial state is '%s' (emergency_state is '%s')", call_state,
             emergency_state);
 
-        update_context_call_state (context, call_state);
+        update_context_call_state (u, call_state);
     }
 }
 
 static DBusHandlerResult
 filter_cb (NCore *core, DBusConnection *connection, DBusMessage *msg, void *userdata)
 {
-    NContext   *context         = userdata;
+    NCallState *u               = userdata;
     const char *call_state      = NULL;
     const char *emergency_state = NULL;
 
@@ -78,7 +95,7 @@ filter_cb (NCore *core, DBusConnection *connection, DBusMessage *msg, void *user
         N_DEBUG (LOG_CAT "state changed to %s (%s)",
             call_state, emergency_state);
 
-        update_context_call_state (context, call_state);
+        update_context_call_state (u, call_state);
     }
 
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
@@ -86,8 +103,9 @@ filter_cb (NCore *core, DBusConnection *connection, DBusMessage *msg, void *user
 
 N_PLUGIN_LOAD (plugin)
 {
-    NCore    *core;
-    NContext *context;
+    NCore      *core;
+    NContext   *context;
+    NCallState *callstate;
 
     core = n_plugin_get_core (plugin);
     g_assert (core);
@@ -95,7 +113,10 @@ N_PLUGIN_LOAD (plugin)
     context = n_core_get_context (core);
     g_assert (context);
 
-    if (n_dbus_add_match (core, filter_cb, context, DBUS_BUS_SYSTEM,
+    callstate = g_new0 (NCallState, 1);
+    callstate->context = context;
+
+    if (n_dbus_add_match (core, filter_cb, callstate, DBUS_BUS_SYSTEM,
                           MCE_SIGNAL_IF,
                           MCE_SIGNAL_PATH,
                           MCE_CALL_STATE_SIG) == 0) {
@@ -103,12 +124,14 @@ N_PLUGIN_LOAD (plugin)
         return FALSE;
     }
 
-    if (!n_dbus_async_call (core, query_call_state_notify_cb, context, DBUS_BUS_SYSTEM,
+    if (!n_dbus_async_call (core, query_call_state_notify_cb, callstate, DBUS_BUS_SYSTEM,
                             MCE_SERVICE,
                             MCE_REQUEST_PATH,
                             MCE_REQUEST_IF,
                             MCE_CALL_STATE_GET))
         N_WARNING (LOG_CAT "failed to query initial state");
+
+    n_plugin_set_userdata (plugin, callstate);
 
     return TRUE;
 }
@@ -119,4 +142,6 @@ N_PLUGIN_UNLOAD (plugin)
 
     core = n_plugin_get_core (plugin);
     n_dbus_remove_match_by_cb (core, filter_cb);
+
+    g_free (n_plugin_get_userdata (plugin));
 }
