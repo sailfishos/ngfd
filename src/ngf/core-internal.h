@@ -40,6 +40,7 @@
 struct _NCore
 {
     gchar            *conf_path;            /* configuration path */
+    gchar            *user_conf_path;       /* configuration path for user defined settings */
     gchar            *plugin_path;          /* plugin path */
 
     GList            *required_plugins;     /* plugins to load (required) */

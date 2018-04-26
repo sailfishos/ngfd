@@ -38,13 +38,14 @@
 
 #define LOG_CAT  "core: "
 
-#define DEFAULT_CONF_PATH     "/usr/share/ngfd"
-#define DEFAULT_PLUGIN_PATH   "/usr/lib/ngf"
-#define DEFAULT_CONF_FILENAME "ngfd.ini"
-#define PLUGIN_CONF_PATH      "plugins.d"
-#define EVENT_CONF_PATH       "events.d"
+#define DEFAULT_CONF_PATH       "/usr/share/ngfd"
+#define DEFAULT_USER_CONF_PATH  "/etc/ngfd"
+#define DEFAULT_PLUGIN_PATH     "/usr/lib/ngf"
+#define DEFAULT_CONF_FILENAME   "ngfd.ini"
+#define PLUGIN_CONF_PATH        "plugins.d"
+#define EVENT_CONF_PATH         "events.d"
 
-#define CORE_CONF_KEYTYPES    "keytypes"
+#define CORE_CONF_KEYTYPES      "keytypes"
 
 static gchar*     n_core_get_path               (const char *key, const char *default_path);
 static NProplist* n_core_load_params            (NCore *core, const char *plugin_name);
@@ -302,12 +303,13 @@ n_core_new (int *argc, char **argv)
 
     /* query the default paths */
 
-    core->conf_path   = n_core_get_path ("NGF_CONF_PATH", DEFAULT_CONF_PATH);
-    core->plugin_path = n_core_get_path ("NGF_PLUGIN_PATH", DEFAULT_PLUGIN_PATH);
-    core->context     = n_context_new ();
-    core->dbus        = n_dbus_helper_new (core);
-    core->haptic      = n_haptic_new (core);
-    core->eventlist   = n_event_list_new (core);
+    core->conf_path         = n_core_get_path ("NGF_CONF_PATH", DEFAULT_CONF_PATH);
+    core->user_conf_path    = n_core_get_path ("NGF_USER_CONF_PATH", DEFAULT_USER_CONF_PATH);
+    core->plugin_path       = n_core_get_path ("NGF_PLUGIN_PATH", DEFAULT_PLUGIN_PATH);
+    core->context           = n_context_new ();
+    core->dbus              = n_dbus_helper_new (core);
+    core->haptic            = n_haptic_new (core);
+    core->eventlist         = n_event_list_new (core);
 
     core->key_types = g_hash_table_new_full (g_str_hash, g_str_equal,
         g_free, NULL);
@@ -336,6 +338,7 @@ n_core_free (NCore *core)
     n_context_free (core->context);
     g_free (core->plugin_path);
     g_free (core->conf_path);
+    g_free (core->user_conf_path);
     g_free (core);
 }
 
@@ -374,6 +377,7 @@ n_core_initialize (NCore *core)
 {
     g_assert (core != NULL);
     g_assert (core->conf_path != NULL);
+    g_assert (core->user_conf_path != NULL);
     g_assert (core->plugin_path != NULL);
 
     GList            *required_plugins = NULL;
@@ -429,6 +433,10 @@ n_core_initialize (NCore *core)
 
     if (!n_core_parse_events (core->eventlist, core->conf_path))
         goto failed_init;
+
+    /* load user defined events, failure to load doesn't
+     * prevent startup. */
+    n_core_parse_events (core->eventlist, core->user_conf_path);
 
     /* initialize required plugins */
     for (p = required_plugins; p; p = g_list_next (p)) {
@@ -498,6 +506,8 @@ n_core_reload_events (NCore *core)
 
     if (!n_core_parse_events (new_eventlist, core->conf_path))
         goto fail;
+
+    n_core_parse_events (new_eventlist, core->user_conf_path);
 
     /* stop all possibly active requests */
     for (iter = g_list_first (n_core_get_requests (core)); iter; iter = g_list_next (iter))
