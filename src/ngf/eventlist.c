@@ -29,6 +29,9 @@
 
 #define LOG_CAT "event-list: "
 
+#define UNSET_KEY_PREFIX "%unset."
+#define UNSET_EVENT_STR  "%unset_event"
+
 static NEvent*      event_list_add_event        (NEventList *eventlist, NEvent *event);
 static void         parse_defines               (NCore *core, GKeyFile *keyfile,
                                                  const char *group, GHashTable **defines);
@@ -109,6 +112,29 @@ sort_event_cb (gconstpointer a, gconstpointer b)
 }
 
 static void
+match_key (const char *key, const char *prefix, const char **result)
+{
+    if (*result)
+        return;
+
+    if (g_str_has_prefix (key, prefix))
+        *result = key;
+}
+
+static void
+find_unset_event_cb (const char *key, const NValue *value, gpointer userdata)
+{
+    (void) value;
+    match_key (key, UNSET_EVENT_STR, userdata);
+}
+
+static void
+find_unset_key_cb (const char *key, const NValue *value, gpointer userdata)
+{
+    (void) value;
+    match_key (key, UNSET_KEY_PREFIX, userdata);
+}
+
 /* Event may change when calling this function, so returned event
  * pointer should be used if it needs to be manipulated after adding
  * to eventlist. */
@@ -133,12 +159,41 @@ event_list_add_event (NEventList *eventlist, NEvent *event)
         found = iter->data;
 
         if (n_event_rules_equal (found, event)) {
+            const char *key = NULL;
+
             /* match found. merge the properties to the pre-existing event
                and free the new one. */
+
+            n_proplist_foreach (event->properties, find_unset_event_cb, &key);
+            if (key) {
+                N_DEBUG (LOG_CAT "removing event '%s'", found->name);
+                n_event_rules_dump (found, LOG_CAT);
+
+                /* first remove event from all events list.. */
+                eventlist->event_list = g_list_remove (eventlist->event_list, found);
+                /* then from event specific entry list */
+                event_list = g_list_remove (event_list, found);
+                if (event_list)
+                    g_hash_table_replace (eventlist->event_table, g_strdup (found->name), event_list);
+                else
+                    g_hash_table_remove (eventlist->event_table, found->name);
+                n_event_free (found);
+                n_event_free (event);
+
+                return NULL;
+            }
 
             N_DEBUG (LOG_CAT "merging event '%s'", found->name);
             n_event_rules_dump (found, LOG_CAT);
 
+            while (TRUE) {
+                key = NULL;
+                n_proplist_foreach (event->properties, find_unset_key_cb, &key);
+                if (!key)
+                    break;
+                n_proplist_unset (found->properties, key + (sizeof (UNSET_KEY_PREFIX) - 1));
+                n_proplist_unset (event->properties, key);
+            }
             n_proplist_merge (found->properties, event->properties);
             n_event_free (event);
 
