@@ -37,6 +37,7 @@ typedef struct _AppData
     NCore     *core;
     gint       default_loglevel;
     guint      sigusr1_source;
+    guint      sigusr2_source;
     guint      sigint_source;
     guint      sigterm_source;
 } AppData;
@@ -116,11 +117,26 @@ handle_sigusr1 (gpointer userdata)
     return TRUE;
 }
 
+/* Reload all event definitions */
+static gboolean
+handle_sigusr2 (gpointer userdata)
+{
+    AppData *app = userdata;
+
+    N_INFO ("daemon: event reload requested.");
+    n_core_reload_events (app->core);
+
+    return TRUE;
+}
+
 static void
 install_signal_handlers (AppData *app)
 {
     app->sigusr1_source = g_unix_signal_add (SIGUSR1,
                                              handle_sigusr1,
+                                             app);
+    app->sigusr2_source = g_unix_signal_add (SIGUSR2,
+                                             handle_sigusr2,
                                              app);
     app->sigterm_source = g_unix_signal_add (SIGTERM,
                                              handle_sigterm,
@@ -135,6 +151,9 @@ remove_signal_handlers (AppData *app)
 {
     if (app->sigusr1_source)
         g_source_remove (app->sigusr1_source), app->sigusr1_source = 0;
+
+    if (app->sigusr2_source)
+        g_source_remove (app->sigusr2_source), app->sigusr2_source = 0;
 
     if (app->sigterm_source)
         g_source_remove (app->sigterm_source), app->sigterm_source = 0;
