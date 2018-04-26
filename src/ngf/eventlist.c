@@ -29,7 +29,7 @@
 
 #define LOG_CAT "event-list: "
 
-static void         event_list_add_event        (NEventList *eventlist, NEvent *event);
+static NEvent*      event_list_add_event        (NEventList *eventlist, NEvent *event);
 static void         parse_defines               (NCore *core, GKeyFile *keyfile,
                                                  const char *group, GHashTable **defines);
 static void         event_list_free_cb          (gpointer in_key, gpointer in_data,
@@ -109,6 +109,10 @@ sort_event_cb (gconstpointer a, gconstpointer b)
 }
 
 static void
+/* Event may change when calling this function, so returned event
+ * pointer should be used if it needs to be manipulated after adding
+ * to eventlist. */
+static NEvent*
 event_list_add_event (NEventList *eventlist, NEvent *event)
 {
     g_assert (eventlist);
@@ -132,13 +136,16 @@ event_list_add_event (NEventList *eventlist, NEvent *event)
             /* match found. merge the properties to the pre-existing event
                and free the new one. */
 
-            N_DEBUG (LOG_CAT "merging event '%s'", event->name);
-            n_event_rules_dump (event, LOG_CAT);
+            N_DEBUG (LOG_CAT "merging event '%s'", found->name);
+            n_event_rules_dump (found, LOG_CAT);
 
             n_proplist_merge (found->properties, event->properties);
             n_event_free (event);
 
-            return;
+            N_DEBUG (LOG_CAT "merged properties:", found->name);
+            n_proplist_foreach (found->properties, event_dump_value_cb, NULL);
+
+            return found;
         }
     }
 
@@ -158,6 +165,8 @@ event_list_add_event (NEventList *eventlist, NEvent *event)
     g_hash_table_replace (eventlist->event_table, g_strdup (event->name), event_list);
 
     eventlist->event_list = g_list_append (eventlist->event_list, event);
+
+    return event;
 }
 
 static void
@@ -232,9 +241,10 @@ n_event_list_parse_keyfile (NEventList *eventlist, GKeyFile *keyfile)
         event = n_event_new_from_group (&eventlist->rule_list, keyfile, *group,
                                         eventlist->core->key_types, defines);
         if (event) {
-            event_list_add_event (eventlist, event);
-            g_slist_foreach (event->rules, subscribe_event_rules_cb,
-                             n_core_get_context (eventlist->core));
+            event = event_list_add_event (eventlist, event);
+            if (event)
+                g_slist_foreach (event->rules, subscribe_event_rules_cb,
+                                 n_core_get_context (eventlist->core));
             parsed++;
         }
     }
