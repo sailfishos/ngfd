@@ -31,6 +31,8 @@
 
 #define LOG_CAT "core: "
 
+#define EVENT_RELOAD_TIME_LIMIT_US (2 * G_USEC_PER_SEC)
+
 typedef struct _AppData
 {
     GMainLoop *loop;
@@ -40,6 +42,7 @@ typedef struct _AppData
     guint      sigusr2_source;
     guint      sigint_source;
     guint      sigterm_source;
+    gint64     last_event_reload;
 } AppData;
 
 static gboolean
@@ -123,8 +126,11 @@ handle_sigusr2 (gpointer userdata)
 {
     AppData *app = userdata;
 
-    N_INFO ("daemon: event reload requested.");
-    n_core_reload_events (app->core);
+    if (app->last_event_reload + EVENT_RELOAD_TIME_LIMIT_US < g_get_real_time ()) {
+        N_INFO ("daemon: event reload requested.");
+        n_core_reload_events (app->core);
+        app->last_event_reload = g_get_real_time ();
+    }
 
     return TRUE;
 }
