@@ -349,7 +349,7 @@ static void
 event_rule_free_cb (gpointer data)
 {
     NEventRule *rule = data;
-    n_event_rule_free (rule);
+    n_event_rule_unref (rule);
 }
 
 void

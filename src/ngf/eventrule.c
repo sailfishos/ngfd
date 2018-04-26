@@ -164,6 +164,7 @@ n_event_rule_parse (const char *rule_str)
 
 
     rule            = g_new0 (NEventRule, 1);
+    rule->ref       = 1;
     rule->key       = g_strdup (key);
     rule->value     = value;
     rule->op        = op;
@@ -184,13 +185,34 @@ bad_rule:
     return NULL;
 }
 
-void
-n_event_rule_free (NEventRule *rule)
+NEventRule*
+n_event_rule_ref (NEventRule *rule)
+{
+    g_assert (rule);
+    g_assert (rule->ref > 0);
+
+    rule->ref ++;
+    return rule;
+}
+
+static void
+event_rule_free (NEventRule *rule)
 {
     g_assert (rule);
     n_value_free (rule->value);
     g_free (rule->key);
     g_free (rule);
+}
+
+void
+n_event_rule_unref (NEventRule *rule)
+{
+    g_assert (rule);
+    g_assert (rule->ref > 0);
+
+    rule->ref --;
+    if (rule->ref == 0)
+        event_rule_free (rule);
 }
 
 gboolean
