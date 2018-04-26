@@ -43,6 +43,7 @@ typedef struct _AppData
     guint      sigint_source;
     guint      sigterm_source;
     gint64     last_event_reload;
+    gboolean   use_default_loglevel;
 } AppData;
 
 static gboolean
@@ -108,14 +109,8 @@ handle_sigusr1 (gpointer userdata)
 {
     AppData *app = userdata;
 
-    if (n_log_get_target () == N_LOG_TARGET_SYSLOG) {
-        n_log_set_target (N_LOG_TARGET_STDOUT);
-        n_log_set_level  (app->default_loglevel);
-    }
-    else {
-        n_log_set_target (N_LOG_TARGET_SYSLOG);
-        n_log_set_level  (N_LOG_LEVEL_ENTER);
-    }
+    app->use_default_loglevel = !app->use_default_loglevel;
+    n_log_set_level (app->use_default_loglevel ? app->default_loglevel : N_LOG_LEVEL_ENTER);
 
     return TRUE;
 }
@@ -175,6 +170,7 @@ main (int argc, char *argv[])
 
     memset (&app, 0, sizeof (app));
     app.default_loglevel = N_LOG_LEVEL_NONE;
+    app.use_default_loglevel = TRUE;
     n_log_initialize (app.default_loglevel);
 
     if (!parse_cmdline (argc, argv, &app))
