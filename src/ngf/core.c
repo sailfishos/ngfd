@@ -34,24 +34,26 @@
 #include "context-internal.h"
 #include "core-dbus-internal.h"
 #include "haptic-internal.h"
+#include "core-player.h"
 
 #define LOG_CAT  "core: "
 
-#define DEFAULT_CONF_PATH     "/usr/share/ngfd"
-#define DEFAULT_PLUGIN_PATH   "/usr/lib/ngf"
-#define DEFAULT_CONF_FILENAME "ngfd.ini"
-#define PLUGIN_CONF_PATH      "plugins.d"
-#define EVENT_CONF_PATH       "events.d"
+#define DEFAULT_CONF_PATH       "/usr/share/ngfd"
+#define DEFAULT_USER_CONF_PATH  "/etc/ngfd"
+#define DEFAULT_PLUGIN_PATH     "/usr/lib/ngf"
+#define DEFAULT_CONF_FILENAME   "ngfd.ini"
+#define PLUGIN_CONF_PATH        "plugins.d"
+#define EVENT_CONF_PATH         "events.d"
 
-#define CORE_CONF_KEYTYPES    "keytypes"
+#define CORE_CONF_KEYTYPES      "keytypes"
 
 static gchar*     n_core_get_path               (const char *key, const char *default_path);
 static NProplist* n_core_load_params            (NCore *core, const char *plugin_name);
 static NPlugin*   n_core_open_plugin            (NCore *core, const char *plugin_name);
 static int        n_core_init_plugin            (NPlugin *plugin, gboolean required);
 static void       n_core_unload_plugin          (NCore *core, NPlugin *plugin);
-static void       n_core_parse_events_from_file (NCore *core, const char *filename);
-static int        n_core_parse_events           (NCore *core);
+static void       n_core_parse_events_from_file (NEventList *eventlist, const char *filename);
+static int        n_core_parse_events           (NEventList *eventlist, const char *conf_path);
 static void       n_core_parse_keytypes         (NCore *core, GKeyFile *keyfile);
 static void       n_core_parse_sink_order       (NCore *core, GKeyFile *keyfile);
 static int        n_core_parse_configuration    (NCore *core);
@@ -301,12 +303,13 @@ n_core_new (int *argc, char **argv)
 
     /* query the default paths */
 
-    core->conf_path   = n_core_get_path ("NGF_CONF_PATH", DEFAULT_CONF_PATH);
-    core->plugin_path = n_core_get_path ("NGF_PLUGIN_PATH", DEFAULT_PLUGIN_PATH);
-    core->context     = n_context_new ();
-    core->dbus        = n_dbus_helper_new (core);
-    core->haptic      = n_haptic_new (core);
-    core->eventlist   = n_event_list_new (core);
+    core->conf_path         = n_core_get_path ("NGF_CONF_PATH", DEFAULT_CONF_PATH);
+    core->user_conf_path    = n_core_get_path ("NGF_USER_CONF_PATH", DEFAULT_USER_CONF_PATH);
+    core->plugin_path       = n_core_get_path ("NGF_PLUGIN_PATH", DEFAULT_PLUGIN_PATH);
+    core->context           = n_context_new ();
+    core->dbus              = n_dbus_helper_new (core);
+    core->haptic            = n_haptic_new (core);
+    core->eventlist         = n_event_list_new (core);
 
     core->key_types = g_hash_table_new_full (g_str_hash, g_str_equal,
         g_free, NULL);
@@ -335,6 +338,7 @@ n_core_free (NCore *core)
     n_context_free (core->context);
     g_free (core->plugin_path);
     g_free (core->conf_path);
+    g_free (core->user_conf_path);
     g_free (core);
 }
 
@@ -373,6 +377,7 @@ n_core_initialize (NCore *core)
 {
     g_assert (core != NULL);
     g_assert (core->conf_path != NULL);
+    g_assert (core->user_conf_path != NULL);
     g_assert (core->plugin_path != NULL);
 
     GList            *required_plugins = NULL;
@@ -426,8 +431,12 @@ n_core_initialize (NCore *core)
 
     /* load events from the given event path. */
 
-    if (!n_core_parse_events (core))
+    if (!n_core_parse_events (core->eventlist, core->conf_path))
         goto failed_init;
+
+    /* load user defined events, failure to load doesn't
+     * prevent startup. */
+    n_core_parse_events (core->eventlist, core->user_conf_path);
 
     /* initialize required plugins */
     for (p = required_plugins; p; p = g_list_next (p)) {
@@ -486,6 +495,32 @@ n_core_initialize (NCore *core)
     return TRUE;
 
 failed_init:
+    return FALSE;
+}
+
+int
+n_core_reload_events (NCore *core)
+{
+    GList       *iter           = NULL;
+    NEventList  *new_eventlist  = n_event_list_new (core);
+
+    if (!n_core_parse_events (new_eventlist, core->conf_path))
+        goto fail;
+
+    n_core_parse_events (new_eventlist, core->user_conf_path);
+
+    /* stop all possibly active requests */
+    for (iter = g_list_first (n_core_get_requests (core)); iter; iter = g_list_next (iter))
+        n_core_stop_request (core, iter->data, 0);
+
+    n_event_list_free (core->eventlist);
+    core->eventlist = new_eventlist;
+    N_INFO (LOG_CAT "reloaded events (%d).", n_event_list_size (core->eventlist));
+    return TRUE;
+
+fail:
+    n_event_list_free (new_eventlist);
+    N_INFO (LOG_CAT "failed to reload events.");
     return FALSE;
 }
 
@@ -595,9 +630,9 @@ n_core_register_input (NCore *core, const NInputInterfaceDecl *iface)
 }
 
 static void
-n_core_parse_events_from_file (NCore *core, const char *filename)
+n_core_parse_events_from_file (NEventList *eventlist, const char *filename)
 {
-    g_assert (core != NULL);
+    g_assert (eventlist != NULL);
     g_assert (filename != NULL);
 
     GKeyFile  *keyfile    = NULL;
@@ -613,20 +648,20 @@ n_core_parse_events_from_file (NCore *core, const char *filename)
 
     N_DEBUG (LOG_CAT "processing event file '%s'", filename);
 
-    n_event_list_parse_keyfile (core->eventlist, keyfile);
+    n_event_list_parse_keyfile (eventlist, keyfile);
 
     g_key_file_free (keyfile);
 }
 
 static int
-n_core_parse_events (NCore *core)
+n_core_parse_events (NEventList *eventlist, const char *conf_path)
 {
     GSList        *conf_files = NULL;
     GSList        *i          = NULL;
     gchar         *filename   = NULL;
 
     /* find all the events within the given path */
-    conf_files = n_core_conf_files_from_path (core->conf_path, EVENT_CONF_PATH);
+    conf_files = n_core_conf_files_from_path (conf_path, EVENT_CONF_PATH);
 
     if (!conf_files) {
         N_ERROR (LOG_CAT "no events defined.");
@@ -635,12 +670,12 @@ n_core_parse_events (NCore *core)
 
     for (i = conf_files; i; i = g_slist_next (i)) {
         filename = i->data;
-        n_core_parse_events_from_file (core, filename);
+        n_core_parse_events_from_file (eventlist, filename);
     }
 
     g_slist_free_full (conf_files, g_free);
 
-    if (n_event_list_size (core->eventlist) == 0) {
+    if (n_event_list_size (eventlist) == 0) {
         N_ERROR (LOG_CAT "no valid events defined.");
         return FALSE;
     }

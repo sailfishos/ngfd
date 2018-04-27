@@ -31,14 +31,19 @@
 
 #define LOG_CAT "core: "
 
+#define EVENT_RELOAD_TIME_LIMIT_US (2 * G_USEC_PER_SEC)
+
 typedef struct _AppData
 {
     GMainLoop *loop;
     NCore     *core;
     gint       default_loglevel;
     guint      sigusr1_source;
+    guint      sigusr2_source;
     guint      sigint_source;
     guint      sigterm_source;
+    gint64     last_event_reload;
+    gboolean   use_default_loglevel;
 } AppData;
 
 static gboolean
@@ -104,13 +109,22 @@ handle_sigusr1 (gpointer userdata)
 {
     AppData *app = userdata;
 
-    if (n_log_get_target () == N_LOG_TARGET_SYSLOG) {
-        n_log_set_target (N_LOG_TARGET_STDOUT);
-        n_log_set_level  (app->default_loglevel);
-    }
-    else {
-        n_log_set_target (N_LOG_TARGET_SYSLOG);
-        n_log_set_level  (N_LOG_LEVEL_ENTER);
+    app->use_default_loglevel = !app->use_default_loglevel;
+    n_log_set_level (app->use_default_loglevel ? app->default_loglevel : N_LOG_LEVEL_ENTER);
+
+    return TRUE;
+}
+
+/* Reload all event definitions */
+static gboolean
+handle_sigusr2 (gpointer userdata)
+{
+    AppData *app = userdata;
+
+    if (app->last_event_reload + EVENT_RELOAD_TIME_LIMIT_US < g_get_real_time ()) {
+        N_INFO ("daemon: event reload requested.");
+        n_core_reload_events (app->core);
+        app->last_event_reload = g_get_real_time ();
     }
 
     return TRUE;
@@ -121,6 +135,9 @@ install_signal_handlers (AppData *app)
 {
     app->sigusr1_source = g_unix_signal_add (SIGUSR1,
                                              handle_sigusr1,
+                                             app);
+    app->sigusr2_source = g_unix_signal_add (SIGUSR2,
+                                             handle_sigusr2,
                                              app);
     app->sigterm_source = g_unix_signal_add (SIGTERM,
                                              handle_sigterm,
@@ -136,6 +153,9 @@ remove_signal_handlers (AppData *app)
     if (app->sigusr1_source)
         g_source_remove (app->sigusr1_source), app->sigusr1_source = 0;
 
+    if (app->sigusr2_source)
+        g_source_remove (app->sigusr2_source), app->sigusr2_source = 0;
+
     if (app->sigterm_source)
         g_source_remove (app->sigterm_source), app->sigterm_source = 0;
 
@@ -150,6 +170,7 @@ main (int argc, char *argv[])
 
     memset (&app, 0, sizeof (app));
     app.default_loglevel = N_LOG_LEVEL_NONE;
+    app.use_default_loglevel = TRUE;
     n_log_initialize (app.default_loglevel);
 
     if (!parse_cmdline (argc, argv, &app))

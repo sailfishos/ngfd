@@ -53,6 +53,7 @@ typedef enum _NEventRuleCache
 
 typedef struct _NEventRule
 {
+    int                 ref;
     NEventRuleTarget    target;
     char               *key;
     NValue             *value;
@@ -61,7 +62,8 @@ typedef struct _NEventRule
 } NEventRule;
 
 NEventRule* n_event_rule_parse            (const char *rule_str);
-void        n_event_rule_free             (NEventRule *rule);
+NEventRule* n_event_rule_ref              (NEventRule *rule);
+void        n_event_rule_unref            (NEventRule *rule);
 gboolean    n_event_rule_equal            (const NEventRule *a, const NEventRule *b);
 void        n_event_rule_dump             (const NEventRule *rule, const char *debug_prefix);
 gboolean    n_event_rule_match            (const NEventRule *rule, const NValue *match_value);

@@ -44,6 +44,12 @@ n_event_new ()
     return g_new0 (NEvent, 1);
 }
 
+static void
+event_unref_rule_cb (gpointer data)
+{
+    n_event_rule_unref (data);
+}
+
 void
 n_event_free (NEvent *event)
 {
@@ -53,6 +59,7 @@ n_event_free (NEvent *event)
     }
 
     g_free (event->name);
+    g_slist_free_full (event->rules, event_unref_rule_cb);
     g_free (event);
 }
 
@@ -150,12 +157,12 @@ merge_rules (GSList **to, GSList *from)
         }
 
         if (new_entry) {
-            *to = g_slist_append (*to, new_rule);
+            *to = g_slist_append (*to, n_event_rule_ref (new_rule));
             N_DEBUG (LOG_CAT "new rule:");
             n_event_rule_dump (new_rule, LOG_CAT);
         } else {
-            n_event_rule_free (new_rule);
-            i_from->data = rule;
+            n_event_rule_unref (new_rule);
+            i_from->data = n_event_rule_ref (rule);
             N_DEBUG (LOG_CAT "cached rule:");
             n_event_rule_dump (rule, LOG_CAT);
         }

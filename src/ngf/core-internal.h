@@ -40,6 +40,7 @@
 struct _NCore
 {
     gchar            *conf_path;            /* configuration path */
+    gchar            *user_conf_path;       /* configuration path for user defined settings */
     gchar            *plugin_path;          /* plugin path */
 
     GList            *required_plugins;     /* plugins to load (required) */
@@ -70,6 +71,7 @@ struct _NCore
 NCore*    n_core_new              (int *argc, char **argv);
 void      n_core_free             (NCore *core);
 int       n_core_initialize       (NCore *core);
+int       n_core_reload_events    (NCore *core);
 void      n_core_shutdown         (NCore *core);
 
 void      n_core_register_sink    (NCore *core, const NSinkInterfaceDecl *iface);
