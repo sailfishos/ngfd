@@ -552,6 +552,7 @@ n_core_shutdown (NCore *core)
 
     NInputInterface **input = NULL;
     NSinkInterface  **sink  = NULL;
+    GList            *iter  = NULL;
 
     /* shutdown all inputs */
 
@@ -589,6 +590,14 @@ n_core_shutdown (NCore *core)
         g_list_foreach (core->optional_plugins, (GFunc) g_free, NULL);
         g_list_free (core->optional_plugins);
         core->optional_plugins = NULL;
+    }
+
+    if (n_core_get_requests (core)) {
+        N_WARNING (LOG_CAT "%u request(s) not stopped:", g_list_length (n_core_get_requests (core)));
+        for (iter = g_list_first (n_core_get_requests (core)); iter; iter = g_list_next (iter)) {
+            NRequest *request = iter->data;
+            N_WARNING (LOG_CAT "(%u) '%s'", request->id, request->name);
+        }
     }
 
     core->shutdown_done = TRUE;
