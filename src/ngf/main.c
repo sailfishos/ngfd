@@ -53,15 +53,20 @@ parse_cmdline (int argc, char **argv, AppData *app)
     int level = app->default_loglevel;
 
     static struct option long_opts[] = {
-        { "verbose", 0, 0, 'v' },
+        { "verbose",        no_argument,        0, 'v' },
+        { "quiet",          no_argument,        0, 'q' },
         { 0, 0, 0, 0 }
     };
 
-    while ((opt = getopt_long (argc, argv, "v", long_opts, &opt_index)) != -1) {
+    while ((opt = getopt_long (argc, argv, "vq", long_opts, &opt_index)) != -1) {
         switch (opt) {
             case 'v':
                 if (level)
                     level--;
+                break;
+
+            case 'q':
+                level = N_LOG_LEVEL_NONE;
                 break;
 
             default:
