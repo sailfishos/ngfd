@@ -111,7 +111,6 @@ fi
 %defattr(-,root,root,-)
 %doc COPYING
 %config(noreplace) %{_sysconfdir}/dbus-1/system.d/%{name}.conf
-%{_datadir}/dbus-1/services/com.nokia.NonGraphicFeedback1.Backend.service
 %{_bindir}/%{name}
 %{_libdir}/ngf/libngfd_dbus.so
 %{_libdir}/ngf/libngfd_resource.so
