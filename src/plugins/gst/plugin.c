@@ -1172,17 +1172,26 @@ gst_sink_stop (NSinkInterface *iface, NRequest *request)
 
     stream_clear_delay (stream);
 
-    if (prev_state == STREAM_STATE_PLAYING && stream->delay_stop && stream->pipeline) {
-        stream->delay_source = g_timeout_add (stream->delay_stop,
-                                              gst_sink_delayed_stop_cb,
-                                              stream);
-        gst_element_set_state (stream->pipeline, GST_STATE_PAUSED);
 
-    } else if (prev_state == STREAM_STATE_PLAYING && stream->fade_stop && stream->pipeline) {
-        start_stream_fade (stream, (gdouble) stream->fade_stop / 1000.0,
-                           get_current_volume (stream), GST_VOLUME_SILENT,
-                           gst_sink_stop_cb);
+    if (prev_state == STREAM_STATE_PLAYING &&
+        stream->pipeline &&
+        (stream->delay_stop || stream->fade_stop)) {
+
+        if (stream->delay_stop) {
+            stream->delay_source = g_timeout_add (stream->delay_stop,
+                                                  gst_sink_delayed_stop_cb,
+                                                  stream);
+            gst_element_set_state (stream->pipeline, GST_STATE_PAUSED);
+        } else {
+            start_stream_fade (stream, (gdouble) stream->fade_stop / 1000.0,
+                               get_current_volume (stream), GST_VOLUME_SILENT,
+                               gst_sink_stop_cb);
+        }
+
+        /* Request is not around anymore after we leave this function. */
+        stream->request = NULL;
     } else {
+        /* Stop immediately */
         gst_sink_stop_cb (stream);
     }
 }
