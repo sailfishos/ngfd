@@ -47,9 +47,10 @@
 #define SOUND_FADE_RESUME     "sound.fade-resume"
 #define SOUND_FADE_STOP       "sound.fade-stop"
 #define SYSTEM_SOUND_PATH     "/usr/share/sounds/"
+#define NO_SOUND_DELAY_MS     (20)
 
 typedef struct _StreamData StreamData;
-typedef void (*stream_fade_cb) (StreamData *stream);
+typedef void (*stream_fade_completed_cb) (StreamData *stream);
 
 typedef struct _FadeEffect
 {
@@ -66,6 +67,7 @@ struct _StreamData
     NRequest *request;
     NSinkInterface *iface;
     GstElement *pipeline;
+    GstState pipeline_state;
     GstElement *volume;
     gboolean volume_limit;
     guint volume_cap;
@@ -92,11 +94,15 @@ struct _StreamData
     guint fade_resume;
     guint fade_stop;
 
-    guint delay_source;
+    gboolean synchronization_pending;
+    guint delay_synchronize_source;
+    guint fake_play_source;
+    guint delay_play_source;
+    guint delay_stop_source;
 
     FadeEffect *fade;
     guint fade_source;
-    stream_fade_cb fade_cb;
+    stream_fade_completed_cb fade_completed_cb;
 };
 
 #define STREAM_STATE_NOT_STARTED    (0)
@@ -133,7 +139,7 @@ static FadeEffect* parse_volume_fade (const char *str);
 static void set_fade_effect (GstControlSource *source, FadeEffect *effect);
 static void start_stream_fade (StreamData *stream, gdouble length,
                                gdouble volume_start, gdouble volume_end,
-                               stream_fade_cb fade_cb);
+                               stream_fade_completed_cb fade_completed_cb);
 static void stop_stream_fade (StreamData *stream);
 static void update_fade_effect (FadeEffect *effect, gdouble elapsed, gdouble volume);
 static void cleanup (StreamData *stream);
@@ -387,22 +393,21 @@ rewind_stream (StreamData *stream)
     gdouble position = 0.0;
 
     /* query the current position and volume */
+    if (get_current_position (stream, &position)) {
+        stream->time_spent += position;
+        stream->last_volume = get_current_volume (stream);
 
-    (void) get_current_position (stream, &position);
-    stream->time_spent += position;
+        /* update the stream effects */
 
-    stream->last_volume = get_current_volume (stream);
+        N_DEBUG (LOG_CAT "fade effect (last volume=%.2f)", stream->last_volume);
 
-    /* update the stream effects */
-
-    N_DEBUG (LOG_CAT "fade effect (last volume=%.2f)", stream->last_volume);
-
-    update_fade_effect (stream->fade_in, stream->time_spent, stream->last_volume);
-    update_fade_effect (stream->fade_out, stream->time_spent, stream->last_volume);
-    update_fade_effect (stream->fade, stream->time_spent, stream->last_volume);
-    set_fade_effect (stream->source, stream->fade_in);
-    set_fade_effect (stream->source, stream->fade_out);
-    set_fade_effect (stream->source, stream->fade);
+        update_fade_effect (stream->fade_in, stream->time_spent, stream->last_volume);
+        update_fade_effect (stream->fade_out, stream->time_spent, stream->last_volume);
+        update_fade_effect (stream->fade, stream->time_spent, stream->last_volume);
+        set_fade_effect (stream->source, stream->fade_in);
+        set_fade_effect (stream->source, stream->fade_out);
+        set_fade_effect (stream->source, stream->fade);
+    }
 
     N_DEBUG (LOG_CAT "rewinding pipeline.");
     if (!gst_element_seek(stream->pipeline, 1.0, GST_FORMAT_TIME,
@@ -413,10 +418,19 @@ rewind_stream (StreamData *stream)
 }
 
 static void
-stream_clear_delay (StreamData *stream)
+stream_clear_delays (StreamData *stream)
 {
-    if (stream->delay_source)
-        g_source_remove (stream->delay_source), stream->delay_source = 0;
+    if (stream->fake_play_source)
+        g_source_remove (stream->fake_play_source), stream->fake_play_source = 0;
+
+    if (stream->delay_synchronize_source)
+        g_source_remove (stream->delay_synchronize_source), stream->delay_synchronize_source = 0;
+
+    if (stream->delay_play_source)
+        g_source_remove (stream->delay_play_source), stream->delay_play_source = 0;
+
+    if (stream->delay_stop_source)
+        g_source_remove (stream->delay_stop_source), stream->delay_stop_source = 0;
 }
 
 static void
@@ -434,21 +448,31 @@ stream_fade_event_cb (gpointer userdata)
 {
     StreamData *stream = userdata;
 
+    stream->fade_source = 0;
     stop_stream_fade (stream);
-    if (stream->fade_cb)
-        stream->fade_cb (stream);
+    if (stream->fade_completed_cb)
+        stream->fade_completed_cb (stream);
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void
-start_stream_fade (StreamData *stream, gdouble length, gdouble volume_start, gdouble volume_end, stream_fade_cb fade_cb)
+start_stream_fade (StreamData *stream,
+                   gdouble length,
+                   gdouble volume_start,
+                   gdouble volume_end,
+                   stream_fade_completed_cb fade_completed_cb)
 {
     gdouble position = 0.0;
 
     stop_stream_fade (stream);
 
-    (void) get_current_position (stream, &position);
+    if (!get_current_position (stream, &position)) {
+        N_ERROR (LOG_CAT "(%p) failed to start stream fade for '%s'", stream, n_request_get_name (stream->request));
+        stream->fade_completed_cb = fade_completed_cb;
+        stream->fade_source = g_timeout_add (0, stream_fade_event_cb, stream);
+        return;
+    }
 
     if (stream->fade)
         fade_effect_free (stream->fade);
@@ -477,7 +501,7 @@ start_stream_fade (StreamData *stream, gdouble length, gdouble volume_start, gdo
     gst_timed_value_control_source_set (GST_TIMED_VALUE_CONTROL_SOURCE (stream->source),
                                         (position + stream->fade->length) * GST_SECOND, stream->fade->end);
 
-    stream->fade_cb = fade_cb;
+    stream->fade_completed_cb = fade_completed_cb;
     stream->fade_source = g_timeout_add ((length + 0.1) * 1000.0, stream_fade_event_cb, stream);
 
     N_DEBUG (LOG_CAT "start fade at %.4f for %.4f seconds, volume start %.4f end %.4f",
@@ -499,7 +523,7 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
             g_error_free (error);
             n_sink_interface_fail (stream->iface, stream->request);
             stream->bus_watch_id = 0;
-            return FALSE;
+            return G_SOURCE_REMOVE;
         }
 
         case GST_MESSAGE_STATE_CHANGED: {
@@ -509,10 +533,14 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
             GstState old_state, new_state, pending_state;
             gst_message_parse_state_changed (msg, &old_state, &new_state, &pending_state);
 
+            stream->pipeline_state = new_state;
+
             N_DEBUG (LOG_CAT "state changed: old %d new %d pending %d", old_state, new_state, pending_state);
 
-            if (old_state == GST_STATE_READY && new_state == GST_STATE_PAUSED && !stream->delay_startup) {
+            if (old_state == GST_STATE_READY && new_state == GST_STATE_PAUSED &&
+                (!stream->delay_startup || stream->synchronization_pending)) {
                 N_DEBUG (LOG_CAT "synchronize");
+                stream->synchronization_pending = FALSE;
                 n_sink_interface_synchronize (stream->iface, stream->request);
             }
 
@@ -525,21 +553,22 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
 
             if (stream->repeat_enabled) {
                 rewind_stream (stream);
-                return TRUE;
+                return G_SOURCE_CONTINUE;
             }
 
             N_DEBUG (LOG_CAT "eos");
             /* Free the pipeline already here */
+            stream->bus_watch_id = 0;
             cleanup (stream);
             n_sink_interface_complete (stream->iface, stream->request);
-            return FALSE;
+            return G_SOURCE_REMOVE;
         }
 
         default:
             break;
     }
 
-    return TRUE;
+    return G_SOURCE_CONTINUE;
 }
 
 static void
@@ -612,6 +641,7 @@ make_pipeline (StreamData *stream)
     set_stream_properties (sink, stream->properties);
 
     stream->pipeline = pipeline;
+    stream->pipeline_state = GST_STATE_NULL;
     stream->volume = volume;
 
     (void) create_volume (stream);
@@ -924,19 +954,36 @@ static gboolean
 gst_sink_synchronize_cb (gpointer userdata) {
     StreamData *stream = userdata;
 
-    stream->delay_source = 0;
-    n_sink_interface_synchronize (stream->iface, stream->request);
+    /* If our pipeline is not yet ready to be played (not yet in state GST_STATE_PAUSED
+     * don't synchronize just yet but wait for pipeline to get ready first. */
+    stream->delay_synchronize_source = 0;
+    if (!stream->sound_enabled || stream->pipeline_state == GST_STATE_PAUSED)
+        n_sink_interface_synchronize (stream->iface, stream->request);
+    else
+        stream->synchronization_pending = TRUE;
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static gboolean
 gst_sink_fake_play_complete_cb (gpointer userdata) {
     StreamData *stream = userdata;
 
+    stream->fake_play_source = 0;
     n_sink_interface_complete (stream->iface, stream->request);
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
+}
+
+static void
+fake_play_setup (StreamData *stream)
+{
+    if (stream->fake_play_source)
+        g_source_remove (stream->fake_play_source), stream->fake_play_source = 0;
+
+    stream->fake_play_source = g_timeout_add (NO_SOUND_DELAY_MS,
+                                              gst_sink_fake_play_complete_cb,
+                                              stream);
 }
 
 static void
@@ -1011,7 +1058,9 @@ gst_sink_prepare (NSinkInterface *iface, NRequest *request)
 
     /* sound not enabled. pipeline not needed */
     if (!stream->sound_enabled) {
-        g_timeout_add(20, gst_sink_synchronize_cb, stream);
+        stream->delay_synchronize_source = g_timeout_add (NO_SOUND_DELAY_MS,
+                                                          gst_sink_synchronize_cb,
+                                                          stream);
         N_DEBUG (LOG_CAT "sound disabled");
         return TRUE;
     }
@@ -1025,10 +1074,9 @@ gst_sink_prepare (NSinkInterface *iface, NRequest *request)
     if (stream->delay_startup) {
         /* synchronize after startup delay so that vibra etc effects
          * start at the same time with delayed gst events as well. */
-        stream_clear_delay (stream);
-        stream->delay_source = g_timeout_add (stream->delay_startup,
-                                              gst_sink_synchronize_cb,
-                                              stream);
+        stream->delay_synchronize_source = g_timeout_add (stream->delay_startup,
+                                                          gst_sink_synchronize_cb,
+                                                          stream);
     }
 
     return TRUE;
@@ -1048,12 +1096,12 @@ gst_sink_play (NSinkInterface *iface, NRequest *request)
 
     /* sound not enabled, complete */
     if (!stream->sound_enabled) {
-        g_timeout_add(20, gst_sink_fake_play_complete_cb, stream);
+        fake_play_setup (stream);
         return TRUE;
     }
 
     if (stream->pipeline) {
-        stream_clear_delay (stream);
+        stream_clear_delays (stream);
 
         if (stream->state == STREAM_STATE_NOT_STARTED) {
             N_DEBUG (LOG_CAT "first time setting pipeline to playing");
@@ -1073,9 +1121,9 @@ gst_sink_play (NSinkInterface *iface, NRequest *request)
 }
 
 static void
-gst_sink_pause_cb (StreamData *stream)
+stream_pause (StreamData *stream)
 {
-    N_DEBUG (LOG_CAT "really pausing pipeline.");
+    N_DEBUG (LOG_CAT "pause");
     gst_element_set_state (stream->pipeline, GST_STATE_PAUSED);
 }
 
@@ -1089,15 +1137,15 @@ gst_sink_pause (NSinkInterface *iface, NRequest *request)
 
     stream = (StreamData*) n_request_get_data (request, GST_KEY);
     g_assert (stream != NULL);
+    N_DEBUG (LOG_CAT "request pause");
 
     if (stream->pipeline && stream->state == STREAM_STATE_PLAYING) {
-        N_DEBUG (LOG_CAT "pausing pipeline.");
         if (stream->fade_pause)
             start_stream_fade (stream, (gdouble) stream->fade_pause / 1000.0,
                                get_current_volume (stream), GST_VOLUME_SILENT,
-                               gst_sink_pause_cb);
+                               stream_pause);
         else
-            gst_sink_pause_cb (stream);
+            stream_pause (stream);
         stream->state = STREAM_STATE_PAUSED;
     }
 
@@ -1119,10 +1167,10 @@ cleanup (StreamData *stream)
 }
 
 static void
-gst_sink_stop_cb (StreamData *stream) {
-    N_DEBUG (LOG_CAT "really stop.");
+stream_stop (StreamData *stream) {
+    N_DEBUG (LOG_CAT "stop");
 
-    stream_clear_delay (stream);
+    stream_clear_delays (stream);
 
     if (stream->pipeline)
         gst_element_set_state (stream->pipeline, GST_STATE_PAUSED);
@@ -1138,7 +1186,7 @@ static void
 gst_sink_stop_all_cb (gpointer userdata) {
     StreamData *stream = userdata;
 
-    stream_clear_delay (stream);
+    stream_clear_delays (stream);
 
     if (stream->pipeline)
         gst_element_set_state (stream->pipeline, GST_STATE_PAUSED);
@@ -1151,8 +1199,12 @@ gst_sink_stop_all_cb (gpointer userdata) {
 static gboolean
 gst_sink_delayed_stop_cb (gpointer userdata)
 {
-    gst_sink_stop_cb (userdata);
-    return FALSE;
+    StreamData *stream = userdata;
+
+    stream->delay_stop_source = 0;
+    stream_stop (stream);
+
+    return G_SOURCE_REMOVE;
 }
 
 static void
@@ -1163,27 +1215,37 @@ gst_sink_stop (NSinkInterface *iface, NRequest *request)
     StreamData *stream = NULL;
     guint prev_state;
 
-    N_DEBUG (LOG_CAT "stop.");
+    N_DEBUG (LOG_CAT "request stop");
 
     stream = n_request_get_data (request, GST_KEY);
     g_assert (stream != NULL);
     prev_state = stream->state;
     stream->state = STREAM_STATE_STOPPED;
 
-    stream_clear_delay (stream);
+    stream_clear_delays (stream);
 
-    if (prev_state == STREAM_STATE_PLAYING && stream->delay_stop && stream->pipeline) {
-        stream->delay_source = g_timeout_add (stream->delay_stop,
-                                              gst_sink_delayed_stop_cb,
-                                              stream);
-        gst_element_set_state (stream->pipeline, GST_STATE_PAUSED);
+    if (prev_state == STREAM_STATE_PLAYING &&
+        stream->pipeline &&
+        (stream->delay_stop || stream->fade_stop)) {
 
-    } else if (prev_state == STREAM_STATE_PLAYING && stream->fade_stop && stream->pipeline) {
-        start_stream_fade (stream, (gdouble) stream->fade_stop / 1000.0,
-                           get_current_volume (stream), GST_VOLUME_SILENT,
-                           gst_sink_stop_cb);
+        if (stream->delay_stop) {
+            N_DEBUG (LOG_CAT "setup delayed stop");
+            stream->delay_stop_source = g_timeout_add (stream->delay_stop,
+                                                       gst_sink_delayed_stop_cb,
+                                                       stream);
+            gst_element_set_state (stream->pipeline, GST_STATE_PAUSED);
+        } else {
+            N_DEBUG (LOG_CAT "setup faded stop");
+            start_stream_fade (stream, (gdouble) stream->fade_stop / 1000.0,
+                               get_current_volume (stream), GST_VOLUME_SILENT,
+                               stream_stop);
+        }
+
+        /* Request is not around anymore after we leave this function. */
+        stream->request = NULL;
     } else {
-        gst_sink_stop_cb (stream);
+        /* Stop immediately */
+        stream_stop (stream);
     }
 }
 

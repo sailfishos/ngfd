@@ -831,7 +831,6 @@ end:
 int
 n_plugin__load (NPlugin *plugin)
 {
-    const NProplist *props;
     static const NInputInterfaceDecl iface = {
         .name       = "dbus",
         .initialize = dbusif_initialize,
@@ -840,17 +839,23 @@ n_plugin__load (NPlugin *plugin)
         .send_reply = dbusif_send_reply
     };
 
+    const NProplist *props;
+    const char *value;
+
+    dbusif_max_requests = DEFAULT_REQUEST_LIMIT;
+    dbusif_max_clients = DEFAULT_CLIENT_LIMIT;
+
     props = n_plugin_get_params (plugin);
 
-    if (n_proplist_has_key (props, DBUSIF_REQUEST_LIMIT))
-        dbusif_max_requests = n_proplist_get_uint (props, DBUSIF_REQUEST_LIMIT);
-    else
-        dbusif_max_requests = DEFAULT_REQUEST_LIMIT;
+    if (n_proplist_has_key (props, DBUSIF_REQUEST_LIMIT) &&
+        (value = n_proplist_get_string (props, DBUSIF_REQUEST_LIMIT))) {
+        dbusif_max_requests = atoi (value);
+    }
 
-    if (n_proplist_has_key (props, DBUSIF_CLIENT_LIMIT))
-        dbusif_max_clients = n_proplist_get_uint (props, DBUSIF_CLIENT_LIMIT);
-    else
-        dbusif_max_clients = DEFAULT_CLIENT_LIMIT;
+    if (n_proplist_has_key (props, DBUSIF_CLIENT_LIMIT) &&
+        (value = n_proplist_get_string (props, DBUSIF_CLIENT_LIMIT))) {
+        dbusif_max_clients = atoi (value);
+    }
 
     /* register the DBus interface as the NInputInterface */
     n_plugin_register_input (plugin, &iface);

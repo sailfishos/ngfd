@@ -87,13 +87,19 @@ n_core_conf_files_from_path (const char *base_path, const char *path)
     GError         *error       = NULL;
 
     conf_path = g_build_path (G_DIR_SEPARATOR_S, base_path, path, NULL);
+
+    if (!g_file_test (conf_path, G_FILE_TEST_IS_DIR)) {
+        N_INFO (LOG_CAT "configuration dir '%s' doesn't exist.", conf_path);
+        goto done;
+    }
+
     conf_dir  = g_dir_open (conf_path, 0, &error);
 
     if (!conf_dir) {
         N_WARNING (LOG_CAT "could not open configuration dir '%s': %s",
             conf_path, error->message);
         g_error_free (error);
-        return NULL;
+        goto done;
     }
 
     while ((filename = g_dir_read_name (conf_dir))) {
@@ -111,8 +117,10 @@ n_core_conf_files_from_path (const char *base_path, const char *path)
     if (conf_files)
         conf_files = g_slist_sort (conf_files, (GCompareFunc) g_strcmp0);
 
+done:
     g_free (conf_path);
-    g_dir_close (conf_dir);
+    if (conf_dir)
+        g_dir_close (conf_dir);
 
     return conf_files;
 }
@@ -431,8 +439,10 @@ n_core_initialize (NCore *core)
 
     /* load events from the given event path. */
 
-    if (!n_core_parse_events (core->eventlist, core->conf_path))
+    if (!n_core_parse_events (core->eventlist, core->conf_path)) {
+        N_ERROR (LOG_CAT "no events defined.");
         goto failed_init;
+    }
 
     /* load user defined events, failure to load doesn't
      * prevent startup. */
@@ -495,6 +505,9 @@ n_core_initialize (NCore *core)
     return TRUE;
 
 failed_init:
+    g_list_free (required_plugins);
+    g_list_free (optional_plugins);
+
     return FALSE;
 }
 
@@ -539,6 +552,7 @@ n_core_shutdown (NCore *core)
 
     NInputInterface **input = NULL;
     NSinkInterface  **sink  = NULL;
+    GList            *iter  = NULL;
 
     /* shutdown all inputs */
 
@@ -576,6 +590,14 @@ n_core_shutdown (NCore *core)
         g_list_foreach (core->optional_plugins, (GFunc) g_free, NULL);
         g_list_free (core->optional_plugins);
         core->optional_plugins = NULL;
+    }
+
+    if (n_core_get_requests (core)) {
+        N_WARNING (LOG_CAT "%u request(s) not stopped:", g_list_length (n_core_get_requests (core)));
+        for (iter = g_list_first (n_core_get_requests (core)); iter; iter = g_list_next (iter)) {
+            NRequest *request = iter->data;
+            N_WARNING (LOG_CAT "(%u) '%s'", request->id, request->name);
+        }
     }
 
     core->shutdown_done = TRUE;
@@ -663,10 +685,8 @@ n_core_parse_events (NEventList *eventlist, const char *conf_path)
     /* find all the events within the given path */
     conf_files = n_core_conf_files_from_path (conf_path, EVENT_CONF_PATH);
 
-    if (!conf_files) {
-        N_ERROR (LOG_CAT "no events defined.");
+    if (!conf_files)
         return FALSE;
-    }
 
     for (i = conf_files; i; i = g_slist_next (i)) {
         filename = i->data;
