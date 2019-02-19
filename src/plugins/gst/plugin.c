@@ -452,7 +452,7 @@ stream_fade_event_cb (gpointer userdata)
     if (stream->fade_cb)
         stream->fade_cb (stream);
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void
@@ -513,7 +513,7 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
             g_error_free (error);
             n_sink_interface_fail (stream->iface, stream->request);
             stream->bus_watch_id = 0;
-            return FALSE;
+            return G_SOURCE_REMOVE;
         }
 
         case GST_MESSAGE_STATE_CHANGED: {
@@ -539,21 +539,22 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
 
             if (stream->repeat_enabled) {
                 rewind_stream (stream);
-                return TRUE;
+                return G_SOURCE_CONTINUE;
             }
 
             N_DEBUG (LOG_CAT "eos");
             /* Free the pipeline already here */
+            stream->bus_watch_id = 0;
             cleanup (stream);
             n_sink_interface_complete (stream->iface, stream->request);
-            return FALSE;
+            return G_SOURCE_REMOVE;
         }
 
         default:
             break;
     }
 
-    return TRUE;
+    return G_SOURCE_CONTINUE;
 }
 
 static void
@@ -941,7 +942,7 @@ gst_sink_synchronize_cb (gpointer userdata) {
     n_sink_interface_synchronize (stream->iface, stream->request);
     stream->delay_synchronize_source = 0;
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static gboolean
@@ -951,7 +952,7 @@ gst_sink_fake_play_complete_cb (gpointer userdata) {
     stream->fake_play_source = 0;
     n_sink_interface_complete (stream->iface, stream->request);
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void
