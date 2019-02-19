@@ -67,6 +67,7 @@ struct _StreamData
     NRequest *request;
     NSinkInterface *iface;
     GstElement *pipeline;
+    GstState pipeline_state;
     GstElement *volume;
     gboolean volume_limit;
     guint volume_cap;
@@ -93,6 +94,7 @@ struct _StreamData
     guint fade_resume;
     guint fade_stop;
 
+    gboolean synchronization_pending;
     guint delay_synchronize_source;
     guint fake_play_source;
     guint delay_play_source;
@@ -527,10 +529,14 @@ bus_cb (GstBus *bus, GstMessage *msg, gpointer userdata)
             GstState old_state, new_state, pending_state;
             gst_message_parse_state_changed (msg, &old_state, &new_state, &pending_state);
 
+            stream->pipeline_state = new_state;
+
             N_DEBUG (LOG_CAT "state changed: old %d new %d pending %d", old_state, new_state, pending_state);
 
-            if (old_state == GST_STATE_READY && new_state == GST_STATE_PAUSED && !stream->delay_startup) {
+            if (old_state == GST_STATE_READY && new_state == GST_STATE_PAUSED &&
+                (!stream->delay_startup || stream->synchronization_pending)) {
                 N_DEBUG (LOG_CAT "synchronize");
+                stream->synchronization_pending = FALSE;
                 n_sink_interface_synchronize (stream->iface, stream->request);
             }
 
@@ -631,6 +637,7 @@ make_pipeline (StreamData *stream)
     set_stream_properties (sink, stream->properties);
 
     stream->pipeline = pipeline;
+    stream->pipeline_state = GST_STATE_NULL;
     stream->volume = volume;
 
     (void) create_volume (stream);
@@ -943,8 +950,13 @@ static gboolean
 gst_sink_synchronize_cb (gpointer userdata) {
     StreamData *stream = userdata;
 
-    n_sink_interface_synchronize (stream->iface, stream->request);
+    /* If our pipeline is not yet ready to be played (not yet in state GST_STATE_PAUSED
+     * don't synchronize just yet but wait for pipeline to get ready first. */
     stream->delay_synchronize_source = 0;
+    if (!stream->sound_enabled || stream->pipeline_state == GST_STATE_PAUSED)
+        n_sink_interface_synchronize (stream->iface, stream->request);
+    else
+        stream->synchronization_pending = TRUE;
 
     return G_SOURCE_REMOVE;
 }
