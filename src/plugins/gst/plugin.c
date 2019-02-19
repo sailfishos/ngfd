@@ -50,7 +50,7 @@
 #define NO_SOUND_DELAY_MS     (20)
 
 typedef struct _StreamData StreamData;
-typedef void (*stream_fade_cb) (StreamData *stream);
+typedef void (*stream_fade_completed_cb) (StreamData *stream);
 
 typedef struct _FadeEffect
 {
@@ -100,7 +100,7 @@ struct _StreamData
 
     FadeEffect *fade;
     guint fade_source;
-    stream_fade_cb fade_cb;
+    stream_fade_completed_cb fade_completed_cb;
 };
 
 #define STREAM_STATE_NOT_STARTED    (0)
@@ -137,7 +137,7 @@ static FadeEffect* parse_volume_fade (const char *str);
 static void set_fade_effect (GstControlSource *source, FadeEffect *effect);
 static void start_stream_fade (StreamData *stream, gdouble length,
                                gdouble volume_start, gdouble volume_end,
-                               stream_fade_cb fade_cb);
+                               stream_fade_completed_cb fade_completed_cb);
 static void stop_stream_fade (StreamData *stream);
 static void update_fade_effect (FadeEffect *effect, gdouble elapsed, gdouble volume);
 static void cleanup (StreamData *stream);
@@ -449,14 +449,18 @@ stream_fade_event_cb (gpointer userdata)
 
     stream->fade_source = 0;
     stop_stream_fade (stream);
-    if (stream->fade_cb)
-        stream->fade_cb (stream);
+    if (stream->fade_completed_cb)
+        stream->fade_completed_cb (stream);
 
     return G_SOURCE_REMOVE;
 }
 
 static void
-start_stream_fade (StreamData *stream, gdouble length, gdouble volume_start, gdouble volume_end, stream_fade_cb fade_cb)
+start_stream_fade (StreamData *stream,
+                   gdouble length,
+                   gdouble volume_start,
+                   gdouble volume_end,
+                   stream_fade_completed_cb fade_completed_cb)
 {
     gdouble position = 0.0;
 
@@ -491,7 +495,7 @@ start_stream_fade (StreamData *stream, gdouble length, gdouble volume_start, gdo
     gst_timed_value_control_source_set (GST_TIMED_VALUE_CONTROL_SOURCE (stream->source),
                                         (position + stream->fade->length) * GST_SECOND, stream->fade->end);
 
-    stream->fade_cb = fade_cb;
+    stream->fade_completed_cb = fade_completed_cb;
     stream->fade_source = g_timeout_add ((length + 0.1) * 1000.0, stream_fade_event_cb, stream);
 
     N_DEBUG (LOG_CAT "start fade at %.4f for %.4f seconds, volume start %.4f end %.4f",
