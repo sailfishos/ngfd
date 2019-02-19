@@ -393,22 +393,21 @@ rewind_stream (StreamData *stream)
     gdouble position = 0.0;
 
     /* query the current position and volume */
+    if (get_current_position (stream, &position)) {
+        stream->time_spent += position;
+        stream->last_volume = get_current_volume (stream);
 
-    (void) get_current_position (stream, &position);
-    stream->time_spent += position;
+        /* update the stream effects */
 
-    stream->last_volume = get_current_volume (stream);
+        N_DEBUG (LOG_CAT "fade effect (last volume=%.2f)", stream->last_volume);
 
-    /* update the stream effects */
-
-    N_DEBUG (LOG_CAT "fade effect (last volume=%.2f)", stream->last_volume);
-
-    update_fade_effect (stream->fade_in, stream->time_spent, stream->last_volume);
-    update_fade_effect (stream->fade_out, stream->time_spent, stream->last_volume);
-    update_fade_effect (stream->fade, stream->time_spent, stream->last_volume);
-    set_fade_effect (stream->source, stream->fade_in);
-    set_fade_effect (stream->source, stream->fade_out);
-    set_fade_effect (stream->source, stream->fade);
+        update_fade_effect (stream->fade_in, stream->time_spent, stream->last_volume);
+        update_fade_effect (stream->fade_out, stream->time_spent, stream->last_volume);
+        update_fade_effect (stream->fade, stream->time_spent, stream->last_volume);
+        set_fade_effect (stream->source, stream->fade_in);
+        set_fade_effect (stream->source, stream->fade_out);
+        set_fade_effect (stream->source, stream->fade);
+    }
 
     N_DEBUG (LOG_CAT "rewinding pipeline.");
     if (!gst_element_seek(stream->pipeline, 1.0, GST_FORMAT_TIME,
@@ -468,7 +467,12 @@ start_stream_fade (StreamData *stream,
 
     stop_stream_fade (stream);
 
-    (void) get_current_position (stream, &position);
+    if (!get_current_position (stream, &position)) {
+        N_ERROR (LOG_CAT "(%p) failed to start stream fade for '%s'", stream, n_request_get_name (stream->request));
+        stream->fade_completed_cb = fade_completed_cb;
+        stream->fade_source = g_timeout_add (0, stream_fade_event_cb, stream);
+        return;
+    }
 
     if (stream->fade)
         fade_effect_free (stream->fade);
