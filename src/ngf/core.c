@@ -457,6 +457,7 @@ n_core_initialize (NCore *core)
     }
 
     g_list_free (required_plugins);
+    required_plugins = NULL;
 
     /* initialize optional plugins */
     for (p = optional_plugins; p; p = g_list_next (p)) {
@@ -465,6 +466,7 @@ n_core_initialize (NCore *core)
     }
 
     g_list_free (optional_plugins);
+    optional_plugins = NULL;
 
     /* initialize all sinks. if no sinks, we're done. */
 
