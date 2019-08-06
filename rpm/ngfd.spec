@@ -1,7 +1,7 @@
 Name:       ngfd
 
 Summary:    Non-graphic feedback service for sounds and other events
-Version:    1.0.1
+Version:    1.1.2
 Release:    1
 Group:      System/Daemons
 License:    LGPLv2.1
