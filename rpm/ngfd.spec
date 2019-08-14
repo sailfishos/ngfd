@@ -98,7 +98,7 @@ ln -s ../ngfd.service %{buildroot}%{_libdir}/systemd/user/actdead-session.target
 %files
 %defattr(-,root,root,-)
 %doc COPYING
-%config(noreplace) %{_sysconfdir}/dbus-1/system.d/%{name}.conf
+%config %{_sysconfdir}/dbus-1/system.d/%{name}.conf
 %{_bindir}/%{name}
 %{_libdir}/ngf/libngfd_dbus.so
 %{_libdir}/ngf/libngfd_resource.so
