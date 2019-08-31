@@ -634,8 +634,7 @@ N_PLUGIN_UNLOAD (plugin)
     g_free               (file_search_path);
     g_list_free_full     (sound_levels, sound_levels_free_cb);
     g_hash_table_destroy (profile_entries);
-    g_list_foreach       (request_keys, (GFunc) g_free, NULL);
-    g_list_free          (request_keys);
+    g_list_free_full     (request_keys, g_free);
 
     (void) plugin;
 }

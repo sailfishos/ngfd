@@ -333,10 +333,7 @@ n_core_free (NCore *core)
     if (!core->shutdown_done)
         n_core_shutdown (core);
 
-    if (core->sink_order) {
-        g_list_foreach (core->sink_order, (GFunc) g_free, NULL);
-        g_list_free (core->sink_order);
-    }
+    g_list_free_full (core->sink_order, g_free);
 
     g_hash_table_destroy (core->key_types);
 
@@ -582,17 +579,11 @@ n_core_shutdown (NCore *core)
         core->plugins = NULL;
     }
 
-    if (core->required_plugins) {
-        g_list_foreach (core->required_plugins, (GFunc) g_free, NULL);
-        g_list_free (core->required_plugins);
-        core->required_plugins = NULL;
-    }
+    g_list_free_full (core->required_plugins, g_free);
+    core->required_plugins = NULL;
 
-    if (core->optional_plugins) {
-        g_list_foreach (core->optional_plugins, (GFunc) g_free, NULL);
-        g_list_free (core->optional_plugins);
-        core->optional_plugins = NULL;
-    }
+    g_list_free_full (core->optional_plugins, g_free);
+    core->optional_plugins = NULL;
 
     if (n_core_get_requests (core)) {
         N_WARNING (LOG_CAT "%u request(s) not stopped:", g_list_length (n_core_get_requests (core)));
