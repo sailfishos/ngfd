@@ -233,11 +233,8 @@ N_PLUGIN_UNLOAD (plugin)
 {
     (void) plugin;
 
-    if (transform_allowed_keys) {
-        g_list_foreach (transform_allowed_keys, (GFunc) g_free, NULL);
-        g_list_free (transform_allowed_keys);
-        transform_allowed_keys = NULL;
-    }
+    g_list_free_full (transform_allowed_keys, g_free);
+    transform_allowed_keys = NULL;
 
     g_hash_table_destroy (transform_key_map);
     transform_key_map = NULL;

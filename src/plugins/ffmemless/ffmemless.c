@@ -97,7 +97,8 @@ int ffmemless_evdev_file_open(const char *file_name)
 
 int ffmemless_evdev_file_search(void)
 {
-	int result, i = 0;
+	int result;
+	short i = 0;
 	int fp = 1;
 	char device_file_name[24];
 	unsigned long features[4];
