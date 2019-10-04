@@ -4,8 +4,8 @@ Summary:    Non-graphic feedback service for sounds and other events
 Version:    1.1.2
 Release:    1
 Group:      System/Daemons
-License:    LGPLv2.1
-URL:        https://meego.gitorious.org/maemo-multimedia/ngfd
+License:    LGPLv2+
+URL:        https://git.sailfishos.org/mer-core/ngfd
 Source0:    %{name}-%{version}.tar.gz
 Source1:    ngfd.service
 Requires:   %{name}-settings
@@ -97,9 +97,10 @@ ln -s ../ngfd.service %{buildroot}%{_libdir}/systemd/user/actdead-session.target
 
 %files
 %defattr(-,root,root,-)
-%doc COPYING
+%license COPYING
 %config %{_sysconfdir}/dbus-1/system.d/%{name}.conf
 %{_bindir}/%{name}
+%dir %{_libdir}/ngf
 %{_libdir}/ngf/libngfd_dbus.so
 %{_libdir}/ngf/libngfd_resource.so
 %{_libdir}/ngf/libngfd_transform.so
@@ -120,8 +121,7 @@ ln -s ../ngfd.service %{buildroot}%{_libdir}/systemd/user/actdead-session.target
 
 %files plugin-devel
 %defattr(-,root,root,-)
-%doc COPYING
-%{_includedir}/ngf/*
+%{_includedir}/ngf
 %{_libdir}/pkgconfig/ngf-plugin.pc
 
 %files plugin-fake
@@ -131,14 +131,12 @@ ln -s ../ngfd.service %{buildroot}%{_libdir}/systemd/user/actdead-session.target
 
 %files settings-basic
 %defattr(-,root,root,-)
-%doc COPYING
 %{_datadir}/ngfd/
 
 %files plugin-doc
 %defattr(-,root,root,-)
-%doc COPYING
-%{_docdir}/ngfd-plugin/html/*
+%{_docdir}/ngfd-plugin/html
 
 %files tests
 %defattr(-,root,root,-)
-/opt/tests/ngfd/*
+/opt/tests/ngfd
