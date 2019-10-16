@@ -26,7 +26,8 @@
 #define LOG_CAT              "transform: "
 #define TRANSFORM_KEY_PREFIX "transform."
 #define ALLOW_FILENAMES      "transform.allow_custom"
-#define FILENAME_SUFFIX      ".filename"
+#define SOUND_FILENAME       "sound.filename"
+#define SOUND_ENABLED        "sound.enabled"
 #define NO_SOUND             "No sound.wav"
 
 N_PLUGIN_NAME        ("transform")
@@ -67,6 +68,7 @@ new_request_cb (NHook *hook, void *data, void *userdata)
     const char *key = NULL, *map_key = NULL, *target = NULL;
     GList *iter = NULL;
     NValue *value = NULL;
+    NValue *original_value = NULL;
     gboolean allow_custom = FALSE;
     NContext* context = NULL;
     const gchar *keyname = NULL;
@@ -97,6 +99,20 @@ new_request_cb (NHook *hook, void *data, void *userdata)
     new_props = n_proplist_new ();
     allow_custom = query_allow_custom_filenames (transform->request);
 
+    /* Just allow filename and enabled properties to new proplist if custom
+     * is allowed. No point in trying to be too clever. If this needs to be
+     * configurable in the future then update to something else. */
+    if (allow_custom) {
+        if ((value = n_proplist_get (props, SOUND_FILENAME))) {
+            n_proplist_set (new_props, SOUND_FILENAME, n_value_copy (value));
+            N_DEBUG (LOG_CAT "+ allowing custom value '" SOUND_FILENAME "'");
+        }
+        if ((value = n_proplist_get (props, SOUND_ENABLED))) {
+            n_proplist_set (new_props, SOUND_ENABLED, n_value_copy (value));
+            N_DEBUG (LOG_CAT "+ allowing custom value '" SOUND_ENABLED "'");
+        }
+    }
+
     for (iter = g_list_first (transform_allowed_keys); iter; iter = g_list_next (iter)) {
         key     = (const char*) iter->data;
         value   = n_proplist_get (props, key);
@@ -105,28 +121,24 @@ new_request_cb (NHook *hook, void *data, void *userdata)
 
         if (value && map_key) {
             tmp = g_strdup_printf ("%s.original", target);
-            n_proplist_set (new_props, tmp, n_value_copy (value));
+            original_value = n_proplist_get (props, target);
+            n_proplist_set (new_props, tmp, n_value_copy (original_value));
             N_DEBUG (LOG_CAT "storing value before transform for key '%s'", tmp);
             g_free (tmp);
         }
 
-        if (g_str_has_suffix (target, FILENAME_SUFFIX) && !allow_custom) {
-            N_DEBUG (LOG_CAT "+ rejecting key '%s', no custom allowed.", target);            
-            continue;
-        }
-
-        if (map_key) {
+        if (value && map_key) {
             N_DEBUG (LOG_CAT "+ transforming key '%s' to '%s'", key, map_key);
             n_proplist_set (new_props, map_key, n_value_copy (value));
         }
-        else {
-            N_DEBUG (LOG_CAT "+ allowing value '%s'", key);
-            n_proplist_set (new_props, key, n_value_copy (value));
+        else if (value) {
+            N_DEBUG (LOG_CAT "+ allowing value '%s'", target);
+            n_proplist_set (new_props, target, n_value_copy (value));
         }
     }
 
     if (!allow_custom && overwrite_audio)
-        n_proplist_set (new_props, "sound.filename", n_value_copy (context_audio));
+        n_proplist_set (new_props, SOUND_FILENAME, n_value_copy (context_audio));
 
     n_request_set_properties (transform->request, new_props);
     n_proplist_free (new_props);
