@@ -1005,7 +1005,7 @@ gst_sink_prepare (NSinkInterface *iface, NRequest *request)
     NProplist *props = NULL;
     gint timeout_ms;
     gboolean custom_sound, fade_only_custom;
-    const char *enabled = NULL;
+    NValue *enabled = NULL;
 
     props = (NProplist*) n_request_get_properties (request);
 
@@ -1017,8 +1017,14 @@ gst_sink_prepare (NSinkInterface *iface, NRequest *request)
     stream->properties = create_stream_properties (props);
     stream->state = STREAM_STATE_NOT_STARTED;
 
-    enabled = n_proplist_get_string (props, SOUND_ENABLED_KEY);
-    stream->sound_enabled = (enabled && g_str_equal(enabled, SOUND_OFF)) ? FALSE : TRUE;
+    stream->sound_enabled = TRUE;
+    enabled = n_proplist_get (props, SOUND_ENABLED_KEY);
+    if (enabled) {
+        if (n_value_type (enabled) == N_VALUE_TYPE_STRING)
+            stream->sound_enabled = g_str_equal (n_value_get_string (enabled), SOUND_OFF) ? FALSE : TRUE;
+        else if (n_value_type (enabled) == N_VALUE_TYPE_BOOL)
+            stream->sound_enabled = n_value_get_bool (enabled);
+    }
 
     stream->volume_limit = parse_volume_limit (n_proplist_get_string (props, SOUND_VOLUME_KEY),
         &stream->volume_min, &stream->volume_max);
