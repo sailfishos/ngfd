@@ -529,6 +529,8 @@ setup_level (const char *key, const NValue *value)
 
     N_DEBUG (LOG_CAT "adding profile convert entry '%s' with %d sound levels", entry->key, entry->count);
     sound_levels = g_list_append (sound_levels, entry);
+
+    g_strfreev (split);
 }
 
 static void
@@ -629,6 +631,10 @@ sound_levels_free_cb (gpointer data)
 
 N_PLUGIN_UNLOAD (plugin)
 {
+    NCore *core = n_plugin_get_core (plugin);
+
+    n_core_disconnect (core, N_CORE_HOOK_TRANSFORM_PROPERTIES, transform_properties_cb, core);
+
     profile_tracker_quit ();
 
     g_free               (file_search_path);
