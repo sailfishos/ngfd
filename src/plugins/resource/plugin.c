@@ -186,7 +186,9 @@ N_PLUGIN_LOAD (plugin)
 
 N_PLUGIN_UNLOAD (plugin)
 {
-    (void) plugin;
+    NCore *core = n_plugin_get_core (plugin);
+
+    n_core_disconnect (core, N_CORE_HOOK_FILTER_SINKS, filter_sinks_cb, core);
 
     if (def_list)
         g_slist_free_full (def_list, resource_def_free_cb);
