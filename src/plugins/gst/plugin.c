@@ -613,19 +613,19 @@ make_pipeline (StreamData *stream)
     sink = gst_element_factory_make ("pulsesink", NULL);
 
     if (!pipeline || !source || !decoder || !audioconv || !volume || !sink) {
-        N_WARNING (LOG_CAT "failed to create required elements.");
+        N_ERROR (LOG_CAT "failed to create required elements.");
         goto failed;
     }
 
     gst_bin_add_many (GST_BIN (pipeline), source, decoder, audioconv, volume, sink, NULL);
     
     if (!gst_element_link (source, decoder)) {
-        N_WARNING (LOG_CAT "failed to link source to decoder");
+        N_ERROR (LOG_CAT "failed to link source to decoder");
         goto failed_pipeline;
     }
 
     if (!gst_element_link_many (audioconv, volume, sink, NULL)) {
-        N_WARNING (LOG_CAT "failed to link converter, volume or sink");
+        N_ERROR (LOG_CAT "failed to link converter, volume or sink");
         goto failed_pipeline;
     }
 
@@ -755,8 +755,8 @@ init_done_cb (NHook *hook, void *data, void *userdata)
             "profile.current.system.sound.level",
             system_sound_level_changed, NULL))
     {
-        N_WARNING (LOG_CAT "failed to subscribe to system sound "
-                           "volume change");
+        N_ERROR (LOG_CAT "failed to subscribe to system sound "
+                         "volume change");
     }
 
     n_context_subscribe_value_change (context, "call_state.mode", call_state_changed, NULL);
@@ -1288,7 +1288,7 @@ N_PLUGIN_LOAD (plugin)
     if (!n_core_connect (core, N_CORE_HOOK_INIT_DONE, 0,
                          init_done_cb, context))
     {
-        N_WARNING (LOG_CAT "failed to setup init done hook.");
+        N_ERROR (LOG_CAT "failed to setup init done hook.");
     }
 
     return TRUE;

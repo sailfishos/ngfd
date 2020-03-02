@@ -156,7 +156,7 @@ n_context_unsubscribe_value_change (NContext *context, const char *key,
 {
     NContextKey *context_key  = NULL;
 
-    if (!context || !key || !callback)
+    if (!context || !callback)
         return;
 
     if (key) {

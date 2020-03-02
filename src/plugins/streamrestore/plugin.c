@@ -562,6 +562,13 @@ entry_list_free (gpointer data)
     g_slist_free_full (entries, (GDestroyNotify) role_entry_unref);
 }
 
+static void
+role_map_key_free (gpointer key)
+{
+    n_context_unsubscribe_value_change (context, key, context_value_changed_cb);
+    g_free (key);
+}
+
 N_PLUGIN_LOAD (plugin)
 {
     NCore           *core    = NULL;
@@ -571,7 +578,7 @@ N_PLUGIN_LOAD (plugin)
     context = n_core_get_context (core);
 
     stream_restore_role_map = g_hash_table_new_full (g_str_hash, g_str_equal,
-                                                     g_free, entry_list_free);
+                                                     role_map_key_free, entry_list_free);
 
     volume_controller_initialize ();
 
@@ -606,7 +613,11 @@ transform_entry_unsubscribe_free (gpointer data)
 
 N_PLUGIN_UNLOAD (plugin)
 {
-    (void) plugin;
+    n_core_disconnect (n_plugin_get_core (plugin), N_CORE_HOOK_INIT_DONE,
+                       init_done_cb, plugin);
+
+    n_context_unsubscribe_value_change (context, CONTEXT_ROUTE_OUTPUT_TYPE_KEY,
+                                        context_value_changed_cb);
 
     if (stream_restore_role_map) {
         g_hash_table_destroy (stream_restore_role_map);

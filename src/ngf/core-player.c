@@ -673,6 +673,12 @@ n_core_synchronize_sink (NCore *core, NSinkInterface *sink, NRequest *request)
         return;
     }
 
+    if (request->play_source_id > 0) {
+        N_ERROR (LOG_CAT "sink '%s' calling synchronize after all sinks have been synchronized.",
+                         sink->name);
+        return;
+    }
+
     if (!request->sinks_preparing) {
         N_WARNING (LOG_CAT "sink '%s' synchronized, but no sinks in the list.",
             sink->name);

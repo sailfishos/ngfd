@@ -559,7 +559,10 @@ n_core_shutdown (NCore *core)
         for (input = core->inputs; *input; ++input) {
             if ((*input)->funcs.shutdown)
                 (*input)->funcs.shutdown (*input);
+            g_free (*input);
         }
+        g_free (core->inputs);
+        core->inputs = NULL;
     }
 
     /* shutdown all sinks */
@@ -568,6 +571,7 @@ n_core_shutdown (NCore *core)
         for (sink = core->sinks; *sink; ++sink) {
             if ((*sink)->funcs.shutdown)
                 (*sink)->funcs.shutdown (*sink);
+            g_free (*sink);
         }
         g_free (core->sinks);
         core->sinks = NULL;

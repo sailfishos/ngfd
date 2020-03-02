@@ -243,7 +243,9 @@ N_PLUGIN_LOAD (plugin)
 
 N_PLUGIN_UNLOAD (plugin)
 {
-    (void) plugin;
+    NCore *core = n_plugin_get_core (plugin);
+
+    n_core_disconnect (core, N_CORE_HOOK_NEW_REQUEST, new_request_cb, core);
 
     g_list_free_full (transform_allowed_keys, g_free);
     transform_allowed_keys = NULL;
