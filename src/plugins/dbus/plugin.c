@@ -241,7 +241,7 @@ client_new (const char *client_name)
     c = g_malloc (sizeof (*c) + strlen (client_name));
     c->ref = 1;
     c->active_requests = 0;
-    g_stpcpy (c->name, client_name);
+    strcpy(c->name, client_name);
     N_DEBUG (LOG_CAT ">> new client (%s)", c->name);
 
     return c;
@@ -305,7 +305,7 @@ client_list_remove (DBusInterfaceData *idata, DBusInterfaceClient *client)
     GSList *search;
 
     if ((search = g_slist_find (idata->clients, client))) {
-        idata->clients = g_slist_remove_link (idata->clients, search);
+        idata->clients = g_slist_delete_link (idata->clients, search);
         idata->client_count--;
     } else
         N_ERROR (LOG_CAT "cannot find client %s from client list.", client->name);
