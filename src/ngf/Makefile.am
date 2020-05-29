@@ -3,6 +3,11 @@ bin_PROGRAMS = ngfd
 ngfd_CFLAGS = $(NGFD_CFLAGS) $(DBUS_CFLAGS) -I$(top_srcdir)/src/include
 ngfd_LDFLAGS = $(NGFD_LIBS) $(DBUS_LIBS) -lrt
 
+if HAVE_SYSTEMD
+ngfd_CFLAGS += $(SYSTEMD_CFLAGS)
+ngfd_LDFLAGS += $(SYSTEMD_LIBS)
+endif
+
 ngfd_SOURCES =                \
     main.c                    \
     plugin-internal.h         \

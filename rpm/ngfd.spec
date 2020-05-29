@@ -1,9 +1,8 @@
 Name:       ngfd
 
 Summary:    Non-graphic feedback service for sounds and other events
-Version:    1.1.6
+Version:    1.2.0
 Release:    1
-Group:      System/Daemons
 License:    LGPLv2+
 URL:        https://git.sailfishos.org/mer-core/ngfd
 Source0:    %{name}-%{version}.tar.gz
@@ -28,6 +27,7 @@ BuildRequires:  pkgconfig(libcanberra)
 BuildRequires:  pkgconfig(ohm-ext-route)
 BuildRequires:  libtool
 BuildRequires:  doxygen
+BuildRequires:  systemd-devel
 Obsoletes:      tone-generator <= 1.5.4
 Provides:       tone-generator > 1.5.4
 
@@ -38,7 +38,6 @@ requests.
 
 %package plugin-devel
 Summary:    Development package for ngfd plugin creation
-Group:      Development/Libraries
 Requires:   %{name} = %{version}-%{release}
 
 %description plugin-devel
@@ -46,7 +45,6 @@ This package contains header files for creating plugins to non-graphical feedbac
 
 %package plugin-fake
 Summary:    Fake plugins for ngfd testing
-Group:      System/Libraries
 Requires:   %{name} = %{version}-%{release}
 
 %description plugin-fake
@@ -54,7 +52,6 @@ Fake plugins for ngfd testing.
 
 %package settings-basic
 Summary:    Example settings for ngfd
-Group:      System/Libraries
 Requires:   %{name} = %{version}-%{release}
 Provides:   %{name}-settings
 
@@ -63,7 +60,6 @@ Example settings for ngfd.
 
 %package plugin-doc
 Summary:    Documentation package for ngfd plugin creation
-Group:      Documentation
 Requires:   %{name} = %{version}-%{release}
 
 %description plugin-doc
@@ -83,17 +79,17 @@ This package contains test suite for ngfd.
 
 %build
 %autogen --enable-debug
-make %{?jobs:-j%jobs}
+make %{?_smp_mflags}
 
 %install
 rm -rf %{buildroot}
 %make_install
 
-install -D -m 644 %{SOURCE1} %{buildroot}%{_libdir}/systemd/user/ngfd.service
-mkdir -p %{buildroot}%{_libdir}/systemd/user/user-session.target.wants
-ln -s ../ngfd.service %{buildroot}%{_libdir}/systemd/user/user-session.target.wants/
-mkdir -p %{buildroot}%{_libdir}/systemd/user/actdead-session.target.wants
-ln -s ../ngfd.service %{buildroot}%{_libdir}/systemd/user/actdead-session.target.wants/
+install -D -m 644 %{SOURCE1} %{buildroot}%{_userunitdir}/ngfd.service
+mkdir -p %{buildroot}%{_userunitdir}/user-session.target.wants
+ln -s ../ngfd.service %{buildroot}%{_userunitdir}/user-session.target.wants/
+mkdir -p %{buildroot}%{_userunitdir}/actdead-session.target.wants
+ln -s ../ngfd.service %{buildroot}%{_userunitdir}/actdead-session.target.wants/
 
 %files
 %defattr(-,root,root,-)
@@ -115,9 +111,9 @@ ln -s ../ngfd.service %{buildroot}%{_libdir}/systemd/user/actdead-session.target
 %{_libdir}/ngf/libngfd_devicelock.so
 %{_libdir}/ngf/libngfd_route.so
 %{_libdir}/ngf/libngfd_null.so
-%{_libdir}/systemd/user/ngfd.service
-%{_libdir}/systemd/user/user-session.target.wants/ngfd.service
-%{_libdir}/systemd/user/actdead-session.target.wants/ngfd.service
+%{_userunitdir}/ngfd.service
+%{_userunitdir}/user-session.target.wants/ngfd.service
+%{_userunitdir}/actdead-session.target.wants/ngfd.service
 
 %files plugin-devel
 %defattr(-,root,root,-)

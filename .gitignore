@@ -19,5 +19,17 @@ doc/doxygen.log
 .deps
 *.la
 *.lo
+*.o
 autom4te.cache/
 m4/
+RPMS/
+documentation.list
+test-driver
+tests/test-context
+tests/test-core
+tests/test-inputinterface
+tests/test-plugin
+tests/test-proplist
+tests/test-request
+tests/test-sinkinterface
+tests/test-value

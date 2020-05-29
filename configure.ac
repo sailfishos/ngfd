@@ -56,6 +56,28 @@ PKG_CHECK_MODULES(CHECK, check)
 AC_SUBST(CHECK_LIBS)
 AC_SUBST(CHECK_CFLAGS)
 
+# for sd_notify()
+AC_ARG_ENABLE([systemd],
+    AS_HELP_STRING([--disable-systemd],[Disable optional systemd integration]))
+
+AS_IF([test "x$enable_systemd" != "xno"],
+    [PKG_CHECK_MODULES(SYSTEMD, [libsystemd], HAVE_SYSTEMD=1, HAVE_SYSTEMD=0)],
+    HAVE_SYSTEMD=0)
+
+AS_IF([test "x$enable_systemd" = "xyes" && test "x$HAVE_SYSTEMD" = "x0"],
+    [AC_MSG_ERROR([*** Needed systemd daemon support not found])])
+
+AC_SUBST(SYSTEMD_LIBS)
+AC_SUBST(SYSTEMD_CFLAGS)
+
+AM_CONDITIONAL(HAVE_SYSTEMD, test x$HAVE_SYSTEMD = x1)
+AS_IF([test "x$HAVE_SYSTEMD" = "x1"], AC_DEFINE([HAVE_SYSTEMD], 1, [Have SYSTEMD?]))
+
+if test x$HAVE_SYSTEMD = x1; then
+    enable_systemd=yes
+else
+    enable_systemd=no
+fi
 
 AC_ARG_ENABLE([coverage],
      	AS_HELP_STRING([--enable-coverage],[Enable coverage @<:@default=false@:>@]),
@@ -241,6 +263,8 @@ echo "
     CFLAGS:                 ${CFLAGS}
     Code coverage:          ${coverage}
     Debug enabled:          ${debug}
+
+    Systemd integration     ${enable_systemd}
 
     DBus plugin:            ${enable_dbus}
     Device lock plugin:     ${enable_devicelock}
