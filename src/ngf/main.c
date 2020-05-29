@@ -19,12 +19,17 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#include <config.h>
 #include <glib.h>
 #include <glib-unix.h>
 #include <getopt.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+
+#ifdef HAVE_SYSTEMD
+#include <systemd/sd-daemon.h>
+#endif
 
 #include <ngf/log.h>
 #include "core-internal.h"
@@ -193,8 +198,14 @@ main (int argc, char *argv[])
     install_signal_handlers (&app);
 
     N_DEBUG ("daemon: Startup complete.");
+#ifdef HAVE_SYSTEMD
+    sd_notify(0, "READY=1");
+#endif
     g_main_loop_run   (app.loop);
     N_DEBUG ("daemon: Shutdown initiated.");
+#ifdef HAVE_SYSTEMD
+    sd_notify(0, "STOPPING=1");
+#endif
     remove_signal_handlers (&app);
     n_core_shutdown   (app.core);
     n_core_free       (app.core);
