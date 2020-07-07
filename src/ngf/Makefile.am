@@ -1,6 +1,6 @@
 bin_PROGRAMS = ngfd
 
-ngfd_CFLAGS = $(NGFD_CFLAGS) $(DBUS_CFLAGS) -I$(top_srcdir)/src/include
+ngfd_CFLAGS = $(NGFD_CFLAGS) $(DBUS_CFLAGS) -I$(top_srcdir)/src/include -DDEFAULT_PLUGIN_PATH=@NGFD_PLUGIN_DIR@
 ngfd_LDFLAGS = $(NGFD_LIBS) $(DBUS_LIBS) -lrt
 
 if HAVE_SYSTEMD
