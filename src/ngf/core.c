@@ -40,7 +40,6 @@
 
 #define DEFAULT_CONF_PATH       "/usr/share/ngfd"
 #define DEFAULT_USER_CONF_PATH  "/etc/ngfd"
-#define DEFAULT_PLUGIN_PATH     "/usr/lib/ngf"
 #define DEFAULT_CONF_FILENAME   "ngfd.ini"
 #define PLUGIN_CONF_PATH        "plugins.d"
 #define EVENT_CONF_PATH         "events.d"
@@ -313,7 +312,7 @@ n_core_new (int *argc, char **argv)
 
     core->conf_path         = n_core_get_path ("NGF_CONF_PATH", DEFAULT_CONF_PATH);
     core->user_conf_path    = n_core_get_path ("NGF_USER_CONF_PATH", DEFAULT_USER_CONF_PATH);
-    core->plugin_path       = n_core_get_path ("NGF_PLUGIN_PATH", DEFAULT_PLUGIN_PATH);
+    core->plugin_path       = n_core_get_path ("NGF_PLUGIN_PATH", G_STRINGIFY(DEFAULT_PLUGIN_PATH));
     core->context           = n_context_new ();
     core->dbus              = n_dbus_helper_new (core);
     core->haptic            = n_haptic_new (core);
