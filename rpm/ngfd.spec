@@ -84,6 +84,7 @@ make %{?_smp_mflags}
 %install
 rm -rf %{buildroot}
 %make_install
+rm -f %{buildroot}/%{_libdir}/ngf/*.la
 
 install -D -m 644 %{SOURCE1} %{buildroot}%{_userunitdir}/ngfd.service
 mkdir -p %{buildroot}%{_userunitdir}/user-session.target.wants
