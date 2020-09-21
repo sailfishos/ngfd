@@ -37,7 +37,8 @@ AC_FUNC_REALLOC
 AC_CHECK_FUNCS([dup2 localtime_r memmove memset socket strchr strdup strerror strrchr strtoul])
 
 # Checks for glib and gobject.
-PKG_CHECK_MODULES(GLIB, glib-2.0 gobject-2.0)
+PKG_CHECK_MODULES(GLIB, glib-2.0 >= 2.40.0
+                        gobject-2.0)
 AC_SUBST(GLIB_CFLAGS)
 AC_SUBST(GLIB_LIBS)
 
