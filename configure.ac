@@ -119,7 +119,7 @@ AM_CONDITIONAL([DEBUG], [test x$debug = xtrue])
 
 # DBus plugin
 
-PKG_CHECK_MODULES(DBUS, dbus-glib-1 >= 0.70 dbus-1 >= 0.70, [has_dbus=yes], [has_dbus=no])
+PKG_CHECK_MODULES(DBUS, dbus-glib-1 >= 0.70 dbus-1 >= 1.8, [has_dbus=yes], [has_dbus=no])
 AC_SUBST(DBUS_CFLAGS)
 AC_SUBST(DBUS_LIBS)
 
