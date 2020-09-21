@@ -1,1 +1,2 @@
-SUBDIRS = ngf include plugins
+override CFLAGS 		+= -Werror
+SUBDIRS				= ngf include plugins

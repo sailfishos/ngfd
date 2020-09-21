@@ -25,9 +25,7 @@ USA.
 
 #include <stdint.h>
 
-#include <dbus/dbus-glib.h>
 #include <dbus/dbus.h>
-#include <dbus/dbus-glib-lowlevel.h>
 
 #define TELEPHONY_TONES_PATH        "/com/Nokia/Telephony/Tones"
 #define TELEPHONY_TONES_SERVICE     "com.Nokia.Telephony.Tones"
