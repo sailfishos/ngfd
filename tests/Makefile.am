@@ -24,7 +24,7 @@ tests_PROGRAMS = \
 tests_DATA = \
        tests.xml
 
-INCLUDES = -I$(top_srcdir)/src/include
+AM_CFLAGS = -I$(top_srcdir)/src/include
 
 test_value_SOURCES = test-value.c $(top_srcdir)/src/ngf/value.c $(top_srcdir)/src/ngf/log.c
 test_value_CFLAGS = @CHECK_CFLAGS@ @NGFD_CFLAGS@
