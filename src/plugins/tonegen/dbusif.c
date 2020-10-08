@@ -26,6 +26,8 @@ USA.
 #include <errno.h>
 #include <stdbool.h>
 
+#include <dbus-gmain/dbus-gmain.h>
+
 #include <ngf/request.h>
 #include <ngf/proplist.h>
 #include <ngf/log.h>
@@ -71,7 +73,7 @@ struct dbusif *dbusif_create(struct tonegend *tonegend)
      */
     dbus_connection_set_exit_on_disconnect(conn, FALSE);
 
-    dbus_connection_setup_with_g_main(conn, NULL);
+    dbus_gmain_set_up_connection(conn, NULL);
 
     dbusif->tonegend = tonegend;
     dbusif->conn   = conn;

@@ -23,7 +23,7 @@
 #include <ngf/log.h>
 #include <glib.h>
 #include <dbus/dbus.h>
-#include <dbus/dbus-glib-lowlevel.h>
+#include <dbus-gmain/dbus-gmain.h>
 
 #include <ngf/core-dbus.h>
 #include "core-internal.h"
@@ -165,7 +165,7 @@ connection_get (NDBusHelper *dbus, DBusBusType type, gboolean set_filter)
     } else {
         if ((dbus->bus[type].connection = dbus_bus_get (type, NULL))) {
             N_DEBUG (LOG_CAT "get initial %s bus", bus_str(type));
-            dbus_connection_setup_with_g_main (dbus->bus[type].connection, NULL);
+            dbus_gmain_set_up_connection (dbus->bus[type].connection, NULL);
         } else {
             N_DEBUG (LOG_CAT "failed to get %s bus", bus_str(type));
             goto fail;

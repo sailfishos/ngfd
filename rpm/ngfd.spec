@@ -11,9 +11,8 @@ Requires:   %{name}-settings
 Requires:   systemd
 Requires:   systemd-user-session-targets
 Requires:   gstreamer1.0-plugins-good
-BuildRequires:  pkgconfig(glib-2.0) >= 2.18.0
-BuildRequires:  pkgconfig(dbus-1) >= 1.0.2
-BuildRequires:  pkgconfig(dbus-glib-1)
+BuildRequires:  pkgconfig(glib-2.0) >= 2.40.0
+BuildRequires:  pkgconfig(dbus-1) >= 1.8.0
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(gstreamer-1.0)
 BuildRequires:  pkgconfig(gstreamer-controller-1.0)

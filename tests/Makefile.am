@@ -1,3 +1,5 @@
+override CFLAGS += -Werror
+
 TESTS = \
        test-value \
        test-request \
@@ -22,7 +24,7 @@ tests_PROGRAMS = \
 tests_DATA = \
        tests.xml
 
-INCLUDES = -I$(top_srcdir)/src/include
+AM_CFLAGS = -I$(top_srcdir)/src/include
 
 test_value_SOURCES = test-value.c $(top_srcdir)/src/ngf/value.c $(top_srcdir)/src/ngf/log.c
 test_value_CFLAGS = @CHECK_CFLAGS@ @NGFD_CFLAGS@
@@ -42,19 +44,19 @@ test_context_LDADD = @CHECK_LIBS@ @NGFD_LIBS@
 
 test_core_SOURCES = test-core.c $(top_srcdir)/src/ngf/core.c $(top_srcdir)/src/ngf/hook.c $(top_srcdir)/src/ngf/sinkinterface.c $(top_srcdir)/src/ngf/context.c $(top_srcdir)/src/ngf/value.c $(top_srcdir)/src/ngf/log.c $(top_srcdir)/src/ngf/proplist.c $(top_srcdir)/src/ngf/plugin.c $(top_srcdir)/src/ngf/event.c $(top_srcdir)/src/ngf/request.c $(top_srcdir)/src/ngf/core-player.c $(top_srcdir)/src/ngf/core-hooks.c $(top_srcdir)/src/ngf/core-dbus.c $(top_srcdir)/src/ngf/haptic.c $(top_srcdir)/src/ngf/eventlist.c $(top_srcdir)/src/ngf/eventrule.c
 test_core_CFLAGS = @CHECK_CFLAGS@ @NGFD_CFLAGS@ @DBUS_CFLAGS@
-test_core_LDADD = @CHECK_LIBS@ @NGFD_LIBS@ @DBUS_LIBS@
+test_core_LDADD = @CHECK_LIBS@ @NGFD_LIBS@ @DBUS_LIBS@ $(top_srcdir)/dbus-gmain/libdbus-gmain.la
 
 test_inputinterface_SOURCES = test-inputinterface.c $(top_srcdir)/src/ngf/inputinterface.c $(top_srcdir)/src/ngf/core.c $(top_srcdir)/src/ngf/hook.c $(top_srcdir)/src/ngf/sinkinterface.c $(top_srcdir)/src/ngf/context.c $(top_srcdir)/src/ngf/value.c $(top_srcdir)/src/ngf/log.c $(top_srcdir)/src/ngf/proplist.c $(top_srcdir)/src/ngf/plugin.c $(top_srcdir)/src/ngf/event.c $(top_srcdir)/src/ngf/request.c $(top_srcdir)/src/ngf/core-player.c $(top_srcdir)/src/ngf/core-hooks.c $(top_srcdir)/src/ngf/core-dbus.c $(top_srcdir)/src/ngf/haptic.c $(top_srcdir)/src/ngf/eventlist.c $(top_srcdir)/src/ngf/eventrule.c
 test_inputinterface_CFLAGS = @CHECK_CFLAGS@ @NGFD_CFLAGS@ @DBUS_CFLAGS@
-test_inputinterface_LDADD = @CHECK_LIBS@ @NGFD_LIBS@ @DBUS_LIBS@
+test_inputinterface_LDADD = @CHECK_LIBS@ @NGFD_LIBS@ @DBUS_LIBS@ $(top_srcdir)/dbus-gmain/libdbus-gmain.la
 
 test_plugin_SOURCES = test-plugin.c $(top_srcdir)/src/ngf/core.c $(top_srcdir)/src/ngf/hook.c $(top_srcdir)/src/ngf/context.c $(top_srcdir)/src/ngf/value.c $(top_srcdir)/src/ngf/log.c $(top_srcdir)/src/ngf/proplist.c $(top_srcdir)/src/ngf/plugin.c $(top_srcdir)/src/ngf/event.c $(top_srcdir)/src/ngf/request.c $(top_srcdir)/src/ngf/core-player.c $(top_srcdir)/src/ngf/core-hooks.c $(top_srcdir)/src/ngf/core-dbus.c $(top_srcdir)/src/ngf/sinkinterface.c $(top_srcdir)/src/ngf/haptic.c $(top_srcdir)/src/ngf/eventlist.c $(top_srcdir)/src/ngf/eventrule.c
 test_plugin_CFLAGS = @CHECK_CFLAGS@ @NGFD_CFLAGS@ @DBUS_CFLAGS@
-test_plugin_LDADD = @CHECK_LIBS@ @NGFD_LIBS@ @DBUS_LIBS@
+test_plugin_LDADD = @CHECK_LIBS@ @NGFD_LIBS@ @DBUS_LIBS@ $(top_srcdir)/dbus-gmain/libdbus-gmain.la
 
 test_sinkinterface_SOURCES = test-sinkinterface.c $(top_srcdir)/src/ngf/sinkinterface.c $(top_srcdir)/src/ngf/core.c $(top_srcdir)/src/ngf/hook.c $(top_srcdir)/src/ngf/context.c $(top_srcdir)/src/ngf/value.c $(top_srcdir)/src/ngf/log.c $(top_srcdir)/src/ngf/proplist.c $(top_srcdir)/src/ngf/plugin.c $(top_srcdir)/src/ngf/event.c $(top_srcdir)/src/ngf/request.c $(top_srcdir)/src/ngf/core-hooks.c $(top_srcdir)/src/ngf/core-dbus.c $(top_srcdir)/src/ngf/haptic.c $(top_srcdir)/src/ngf/eventlist.c $(top_srcdir)/src/ngf/eventrule.c
 test_sinkinterface_CFLAGS = @CHECK_CFLAGS@ @NGFD_CFLAGS@ @DBUS_CFLAGS@
-test_sinkinterface_LDADD = @CHECK_LIBS@ @NGFD_LIBS@ @DBUS_LIBS@
+test_sinkinterface_LDADD = @CHECK_LIBS@ @NGFD_LIBS@ @DBUS_LIBS@ $(top_srcdir)/dbus-gmain/libdbus-gmain.la
 
 plugindir = @NGFD_PLUGIN_DIR@
 plugin_LTLIBRARIES = libngfd_test_fake.la

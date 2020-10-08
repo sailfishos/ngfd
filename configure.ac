@@ -1,24 +1,25 @@
 AC_PREREQ(2.61)
 AC_INIT(ngfd, 1.1.6)
+AM_INIT_AUTOMAKE([subdir-objects])
 
 AC_CONFIG_MACRO_DIR([m4])
 AM_CONFIG_HEADER([config.h])
 AC_CONFIG_SRCDIR([src/ngf/main.c])
-AM_INIT_AUTOMAKE(AC_PACKAGE_NAME, AC_PACKAGE_VERSION)
 
 # Disable static libraries.
 AC_DISABLE_STATIC
 
 # Initialize programs.
 
+AM_PROG_AR
+
 AC_PROG_CC
-AM_PROG_CC_C_O
 AC_PROG_INSTALL
 AM_PROG_LIBTOOL
 
 # Enable extra GCC flags.
 if test "$GCC" = "yes"; then
-    CFLAGS="$CFLAGS -Wall -Wextra -Werror"
+    CFLAGS="$CFLAGS -Wall -Wextra"
 fi
 
 # Checks for header files.
@@ -37,7 +38,8 @@ AC_FUNC_REALLOC
 AC_CHECK_FUNCS([dup2 localtime_r memmove memset socket strchr strdup strerror strrchr strtoul])
 
 # Checks for glib and gobject.
-PKG_CHECK_MODULES(GLIB, glib-2.0 gobject-2.0)
+PKG_CHECK_MODULES(GLIB, glib-2.0 >= 2.40.0
+                        gobject-2.0)
 AC_SUBST(GLIB_CFLAGS)
 AC_SUBST(GLIB_LIBS)
 
@@ -119,7 +121,7 @@ AM_CONDITIONAL([DEBUG], [test x$debug = xtrue])
 
 # DBus plugin
 
-PKG_CHECK_MODULES(DBUS, dbus-glib-1 >= 0.70 dbus-1 >= 0.70, [has_dbus=yes], [has_dbus=no])
+PKG_CHECK_MODULES(DBUS, dbus-1 >= 1.8, [has_dbus=yes], [has_dbus=no])
 AC_SUBST(DBUS_CFLAGS)
 AC_SUBST(DBUS_LIBS)
 
@@ -280,6 +282,7 @@ echo "
 
 AC_CONFIG_FILES([
 Makefile
+dbus-gmain/Makefile
 src/Makefile
 src/ngf/Makefile
 src/include/Makefile
