@@ -1,5 +1,5 @@
 AC_PREREQ(2.61)
-AC_INIT(ngfd, 1.1.6)
+AC_INIT(ngfd, 1.2.3)
 AM_INIT_AUTOMAKE([subdir-objects])
 
 AC_CONFIG_MACRO_DIR([m4])
