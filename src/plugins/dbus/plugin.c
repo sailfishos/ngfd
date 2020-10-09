@@ -21,7 +21,7 @@
 
 #include <glib.h>
 #include <dbus/dbus.h>
-#include <dbus/dbus-glib-lowlevel.h>
+#include <dbus-gmain/dbus-gmain.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -732,7 +732,7 @@ dbusif_initialize (NInputInterface *iface)
         goto error;
     }
 
-    dbus_connection_setup_with_g_main (idata->connection, NULL);
+    dbus_gmain_set_up_connection (idata->connection, NULL);
 
     ret = dbus_bus_request_name (idata->connection, NGF_DBUS_NAME,
         DBUS_NAME_FLAG_REPLACE_EXISTING, &error);
