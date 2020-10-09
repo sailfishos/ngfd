@@ -22,7 +22,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <dbus/dbus.h>
-#include <dbus/dbus-glib-lowlevel.h>
+#include <dbus-gmain/dbus-gmain.h>
 #include "volume-controller.h"
 
 #include <ngf/log.h>
@@ -824,7 +824,7 @@ connect_peer_to_peer()
         return FALSE;
     }
 
-    dbus_connection_setup_with_g_main (volume_bus, NULL);
+    dbus_gmain_set_up_connection (volume_bus, NULL);
 
     if (!dbus_connection_add_filter (volume_bus, filter_cb, NULL, NULL)) {
         N_WARNING (LOG_CAT "failed to add filter");
@@ -861,7 +861,7 @@ connect_get_address()
         goto fail;
     }
 
-    dbus_connection_setup_with_g_main(volume_session_bus, NULL);
+    dbus_gmain_set_up_connection (volume_session_bus, NULL);
 
     if (!(msg = dbus_message_new_method_call(PULSE_LOOKUP_DEST,
                                              PULSE_LOOKUP_PATH,
