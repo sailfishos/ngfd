@@ -22,7 +22,6 @@
 #include <ngf/plugin.h>
 #include <ngf/core-dbus.h>
 #include <dbus/dbus.h>
-#include <dbus/dbus-glib-lowlevel.h>
 #include <ohm-ext/route.h>
 #include "keys.h"
 

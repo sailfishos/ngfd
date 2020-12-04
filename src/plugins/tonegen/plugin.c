@@ -24,7 +24,6 @@
 
 #include <ngf/plugin.h>
 #include <dbus/dbus.h>
-#include <dbus/dbus-glib-lowlevel.h>
 #include <stdbool.h>
 #include <glib.h>
 #include <limits.h>

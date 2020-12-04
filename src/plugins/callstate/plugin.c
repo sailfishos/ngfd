@@ -23,7 +23,6 @@
 #include <ngf/plugin.h>
 #include <ngf/core-dbus.h>
 #include <dbus/dbus.h>
-#include <dbus/dbus-glib-lowlevel.h>
 #include <mce/dbus-names.h>
 
 #define LOG_CAT "callstate: "
