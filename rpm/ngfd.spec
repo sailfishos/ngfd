@@ -1,7 +1,7 @@
 Name:       ngfd
 
 Summary:    Non-graphic feedback service for sounds and other events
-Version:    1.2.5
+Version:    1.3.0
 Release:    1
 License:    LGPLv2+
 URL:        https://github.com/sailfishos/ngfd
