@@ -62,15 +62,24 @@
  *
  * alarm and ringtone effects should repeat indefinitely.
  */
-#define N_HAPTIC_EFFECT_TOUCH     "touch"
-#define N_HAPTIC_EFFECT_SHORT     "short"
-#define N_HAPTIC_EFFECT_STRONG    "strong"
-#define N_HAPTIC_EFFECT_LONG      "long"
-#define N_HAPTIC_EFFECT_NOTICE    "notice"
-#define N_HAPTIC_EFFECT_MESSAGE   "message"
-#define N_HAPTIC_EFFECT_ATTENTION "attention"
-#define N_HAPTIC_EFFECT_ALARM     "alarm"
-#define N_HAPTIC_EFFECT_RINGTONE  "ringtone"
+#define N_HAPTIC_EFFECT_DRAG_START     "drag_start"
+#define N_HAPTIC_EFFECT_RELEASE_WEAK   "release_weak"
+#define N_HAPTIC_EFFECT_DRAG_FAIL      "drag_fail"
+#define N_HAPTIC_EFFECT_DRAG_BOUNDARY  "drag_boundary"
+#define N_HAPTIC_EFFECT_TOUCH_WEAK     "touch_weak"
+#define N_HAPTIC_EFFECT_DRAG_END       "drag_end"
+#define N_HAPTIC_EFFECT_RELEASE        "release"
+#define N_HAPTIC_EFFECT_TOUCH          "touch"
+#define N_HAPTIC_EFFECT_RELEASE_STRONG "release_strong"
+#define N_HAPTIC_EFFECT_TOUCH_STRONG   "touch_strong"
+#define N_HAPTIC_EFFECT_SHORT          "short"
+#define N_HAPTIC_EFFECT_STRONG         "strong"
+#define N_HAPTIC_EFFECT_LONG           "long"
+#define N_HAPTIC_EFFECT_NOTICE         "notice"
+#define N_HAPTIC_EFFECT_MESSAGE        "message"
+#define N_HAPTIC_EFFECT_ATTENTION      "attention"
+#define N_HAPTIC_EFFECT_ALARM          "alarm"
+#define N_HAPTIC_EFFECT_RINGTONE       "ringtone"
 
 /* Supported haptic classes */
 #define N_HAPTIC_CLASS_UNDEFINED  (0)
