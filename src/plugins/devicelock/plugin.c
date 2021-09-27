@@ -22,7 +22,6 @@
 #include <ngf/plugin.h>
 #include <ngf/core-dbus.h>
 #include <dbus/dbus.h>
-#include <mce/dbus-names.h>
 
 #define LOG_CAT "devicelock: "
 #define DEVICE_LOCK_KEY "device_lock.state"

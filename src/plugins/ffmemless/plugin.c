@@ -38,6 +38,7 @@
 #define FFM_DEVFILE_KEY		"device_file_path"
 #define FFM_EFFECTLIST_KEY	"supported_effects"
 #define FFM_SOUND_REPEAT_KEY	"sound.repeat"
+#define FFM_HAPTIC_DURATION_KEY	"haptic.duration"
 #define FFM_MAX_PARAM_LEN	80
 
 #define NGF_DEFAULT_DURATION	240
@@ -650,6 +651,7 @@ static int ffm_sink_prepare(NSinkInterface *iface, NRequest *request)
 	const struct ffm_effect_data *data;
 	struct ffm_effect_data *copy;
 	gboolean repeat;
+	guint playback_time;
 	const gchar *key;
 
 	N_DEBUG (LOG_CAT "prepare");
@@ -667,12 +669,19 @@ static int ffm_sink_prepare(NSinkInterface *iface, NRequest *request)
 	memcpy(copy, data, sizeof(struct ffm_effect_data));
 
 	repeat = n_proplist_get_bool (props, FFM_SOUND_REPEAT_KEY);
-	if (repeat) {
+	playback_time = n_proplist_get_uint (props, FFM_HAPTIC_DURATION_KEY);
+	if (repeat || playback_time) {
+		/*
+		 * If duration was not defined, it's zero and we don't report playback
+		 * done. Otherwise, as effects are already stored by the kernel we just
+		 * keep repeating them until timer runs out and effect ends.
+		 */
 		copy->repeat = INT32_MAX; /* repeat to "infinity" */
-		copy->playback_time = 0; /* don't report playback done */
+		copy->playback_time = playback_time;
 	}
 
-	N_DEBUG (LOG_CAT "prep effect %s, repeat %d times", key, copy->repeat);
+	N_DEBUG (LOG_CAT "prep effect %s, repeat %d times, duration of %d ms",
+			key, copy->repeat, copy->playback_time);
 
 	n_request_store_data(request, FFM_KEY, copy);
 	n_sink_interface_synchronize(iface, request);
