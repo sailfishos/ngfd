@@ -50,6 +50,8 @@
 #define NGF_DEFAULT_LEVEL 0x5FFF
 
 #define CACHE_EFFECTS
+// We're using just 8 bytes for the custom data, most drivers seem to require 6.
+#define CUSTOM_DATA_LEN 8
 
 N_PLUGIN_NAME(FFM_PLUGIN_NAME)
 N_PLUGIN_DESCRIPTION("Vibra plugin using ff-memless kernel backend")
@@ -73,6 +75,7 @@ static struct ffm_data {
 	NProplist *sys_props;
 	GHashTable	*effects;
 	unsigned long features[4];
+	GPtrArray* custom_data_storage;
 } ffm;
 
 static int ffm_setup_device(const NProplist *props, int *dev_fd)
@@ -106,6 +109,7 @@ static int ffm_setup_device(const NProplist *props, int *dev_fd)
 static void ffm_close_device(int fd)
 {
 	ffmemless_evdev_file_close(fd);
+
 }
 
 /* Fetches string value from props with full key combined from prefix and key */
@@ -301,8 +305,7 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 	char *key;
 	struct ff_effect ff;
 	struct ffm_effect_data *data;
-	// We're using just an int to map to the array below.
-	__s16 custom_data[sizeof(int)/sizeof(__s16)] = { 0 };
+	void* custom_data;
 	GHashTableIter iter;
 
 	if(!effects || !props) {
@@ -435,11 +438,13 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 				ff.u.periodic.waveform = FF_SINE;
 
 			if (ff.u.periodic.waveform == FF_CUSTOM) {
-				int* custom = (void*)custom_data;
+				custom_data = g_malloc0(CUSTOM_DATA_LEN);
+				g_ptr_array_add(ffm.custom_data_storage, custom_data);
+				int* custom = custom_data;
 				*custom = ffm_get_int_value(props,
 					key, "_CUSTOM", 0, UINT16_MAX);
 				ff.u.periodic.custom_data = custom_data;
-				ff.u.periodic.custom_len = sizeof(int)/sizeof(__s16);
+				ff.u.periodic.custom_len = CUSTOM_DATA_LEN;
 			}
 
 			ff.u.periodic.period = ffm_get_int_value(props,
@@ -604,6 +609,8 @@ static int ffm_sink_initialize(NSinkInterface *iface)
 		goto ffm_init_error1;
 	}
 
+	ffm.custom_data_storage = g_ptr_array_new_with_free_func(g_free);
+
 	ffm.effects = ffm_new_effect_list(n_proplist_get_string(ffm.ngfd_props,
 							FFM_EFFECTLIST_KEY));
 
@@ -628,6 +635,7 @@ static int ffm_sink_initialize(NSinkInterface *iface)
 
 ffm_init_error2:
 	g_hash_table_destroy(ffm.effects);
+	g_ptr_array_free(ffm.custom_data_storage, TRUE);
 	ffm_close_device(ffm.dev_file);
 ffm_init_error1:
 	return FALSE;
@@ -636,6 +644,7 @@ static void ffm_sink_shutdown(NSinkInterface *iface)
 {
 	(void) iface;
 	g_hash_table_destroy(ffm.effects);
+	g_ptr_array_free(ffm.custom_data_storage, TRUE);
 	ffm_close_device(ffm.dev_file);
 }
 
