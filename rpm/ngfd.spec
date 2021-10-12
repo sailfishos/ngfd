@@ -24,9 +24,9 @@ BuildRequires:  pkgconfig(mce)
 BuildRequires:  pkgconfig(profile)
 BuildRequires:  pkgconfig(libcanberra)
 BuildRequires:  pkgconfig(ohm-ext-route)
+BuildRequires:  pkgconfig(systemd)
 BuildRequires:  libtool
 BuildRequires:  doxygen
-BuildRequires:  systemd-devel
 Obsoletes:      tone-generator <= 1.5.4
 Provides:       tone-generator > 1.5.4
 
