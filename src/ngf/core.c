@@ -309,6 +309,9 @@ n_core_new (int *argc, char **argv)
     core = g_new0 (NCore, 1);
 
     /* query the default paths */
+#ifndef DEFAULT_PLUGIN_PATH
+#error "DEFAULT_PLUGIN_PATH needs to be defined"
+#endif
 
     core->conf_path         = n_core_get_path ("NGF_CONF_PATH", DEFAULT_CONF_PATH);
     core->user_conf_path    = n_core_get_path ("NGF_USER_CONF_PATH", DEFAULT_USER_CONF_PATH);
