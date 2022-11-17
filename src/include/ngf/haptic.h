@@ -53,6 +53,27 @@
 
 #define N_HAPTIC_EFFECT_DEFAULT   "default"
 
+/**
+ * haptic.repeat is generic catch-all boolean that when defined and set
+ * as false all repeats in haptic sequences are changed to play out only
+ * once, even if the sequence would be defined with unlimited repeats.
+ *
+ * In case of non-repeating sequence with the key defined as true will
+ * change the sequence to have unlimited repeats.
+ */
+#define N_HAPTIC_REPEAT_KEY             "haptic.repeat"
+
+/**
+ * haptic.duration defines the maximum time an effect is played, in
+ * milliseconds.
+ */
+#define N_HAPTIC_DURATION_KEY           "haptic.duration"
+
+/** Sequence for the haptic effect, overriding possible system-wide
+ * definitions for an event.
+ */
+#define N_HAPTIC_SEQUENCE_KEY           "haptic.sequence"
+
 /* System-defined haptic effects. Preferably all plugins implementing
  * haptic functionality should be able to handle all the effects
  * listed here. Strictly speaking only mandatory one is "default".
