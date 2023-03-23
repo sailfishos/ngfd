@@ -539,7 +539,9 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 
 	return 0;
 ffm_eff_error1:
-	g_hash_table_destroy(ffm.effects);
+	if(g_hash_table_size(ffm.effects) > 0) {
+		g_hash_table_destroy(ffm.effects);
+	}
 	return -1;
 }
 
@@ -605,7 +607,9 @@ static int ffm_play(struct ffm_effect_data *data, int play)
 static void ffm_sink_shutdown(NSinkInterface *iface)
 {
 	(void) iface;
-	g_hash_table_destroy(ffm.effects);
+	if(g_hash_table_size(ffm.effects) > 0) {
+		g_hash_table_destroy(ffm.effects);
+	}
 	ffm_close_device(ffm.dev_file);
 }
 
