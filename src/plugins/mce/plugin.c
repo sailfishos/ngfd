@@ -38,9 +38,29 @@ typedef struct _MceData
     NRequest       *request;
     NSinkInterface *iface;
     gchar          *pattern;
+    gboolean        playing;
 } MceData;
 
 static GList *active_events;
+
+static void
+activate_cb (NCore *core, DBusMessage *msg, void *userdata)
+{
+    (void) core;
+    (void) msg;
+    gchar *pattern = (gchar*) userdata;
+
+    N_DEBUG (LOG_CAT "%s >> mce acknowledged playing %s", __FUNCTION__, pattern);
+    for (GList *event = active_events; event != NULL; event = g_list_next (event)) {
+        MceData *data = (MceData *) event->data;
+        if (g_strcmp0 (pattern, data->pattern) == 0) {
+            data->playing = TRUE;
+            break;
+        }
+    }
+
+    g_free (pattern);
+}
 
 static gboolean
 toggle_pattern (NCore *core, const char *pattern, gboolean activate)
@@ -62,7 +82,12 @@ toggle_pattern (NCore *core, const char *pattern, gboolean activate)
         return FALSE;
     }
 
-    ret = n_dbus_async_call_full (core, NULL, NULL, DBUS_BUS_SYSTEM, msg);
+    if (activate) {
+        ret = n_dbus_async_call_full (core, activate_cb, g_strdup (pattern), DBUS_BUS_SYSTEM, msg);
+    } else {
+        ret = n_dbus_async_call_full (core, NULL, NULL, DBUS_BUS_SYSTEM, msg);
+    }
+
     dbus_message_unref (msg);
 
     if (ret)
@@ -78,24 +103,24 @@ mce_signal_filter (NCore *core, DBusConnection *connection, DBusMessage *msg, vo
     (void) connection;
     (void) user_data;
 
-    if (dbus_message_is_signal(msg, MCE_SIGNAL_IF, MCE_LED_PATTERN_DEACTIVATED_SIG)) {
+    if (dbus_message_is_signal (msg, MCE_SIGNAL_IF, MCE_LED_PATTERN_DEACTIVATED_SIG)) {
         DBusError error;
-        dbus_error_init(&error);
+        dbus_error_init (&error);
 
         gchar *pattern = NULL;
 
-        if (!dbus_message_get_args(msg, &error, DBUS_TYPE_STRING, &pattern, DBUS_TYPE_INVALID)) {
+        if (!dbus_message_get_args (msg, &error, DBUS_TYPE_STRING, &pattern, DBUS_TYPE_INVALID)) {
             N_WARNING (LOG_CAT "%s >> failed to read MCE signal arguments, cause: %s", __FUNCTION__, error.message);
-            dbus_error_free(&error);
+            dbus_error_free (&error);
         } else {
             GList *event;
             N_DEBUG (LOG_CAT "%s >> mce finished playing %s", __FUNCTION__, pattern);
-            for (event = active_events; event != NULL; event = g_list_next(event)) {
+            for (event = active_events; event != NULL; event = g_list_next (event)) {
                 MceData *data = (MceData *) event->data;
-                if (g_strcmp0(pattern, data->pattern) == 0) {
-                    n_sink_interface_complete(data->iface, data->request);
+                if (g_strcmp0 (pattern, data->pattern) == 0 && data->playing) {
+                    active_events = g_list_remove_all (active_events, data);
+                    n_sink_interface_complete (data->iface, data->request);
                     N_DEBUG (LOG_CAT "%s >> led pattern %s complete", __FUNCTION__, data->pattern);
-                    active_events = g_list_remove_all(active_events, data);
                     break;
                 }
             }
@@ -157,7 +182,7 @@ mce_sink_play (NSinkInterface *iface, NRequest *request)
     if (pattern != NULL) {
         data->pattern = g_strdup (pattern);
         if (toggle_pattern (core, pattern, TRUE)) {
-            active_events = g_list_append(active_events, data);
+            active_events = g_list_append (active_events, data);
         } else {
             g_free (data->pattern);
             data->pattern = NULL;
@@ -187,12 +212,20 @@ mce_sink_stop (NSinkInterface *iface, NRequest *request)
     core = n_sink_interface_get_core (iface);
 
     if (data->pattern) {
-        toggle_pattern (core, data->pattern, FALSE);
+        // request stop only if on active patterns
+        for (GList *event = active_events; event != NULL; event = g_list_next (event)) {
+            MceData *event_data = (MceData *) event->data;
+            if (g_strcmp0 (data->pattern, event_data->pattern) == 0) {
+                toggle_pattern (core, event_data->pattern, FALSE);
+                break;
+            }
+        }
+
         g_free (data->pattern);
         data->pattern = NULL;
     }
 
-    active_events = g_list_remove_all(active_events, data);
+    active_events = g_list_remove_all (active_events, data);
     g_slice_free (MceData, data);
 }
 
