@@ -92,7 +92,7 @@
  * This function should be used by all haptic feedback plugins in their
  * _sink_can_handle() function to determine whether the event should be
  * played or not. It will take care of returning FALSE in case vibration
- * feedback is diabled or if phone calls are active. If it returns TRUE,
+ * feedback is disabled or if phone calls are active. If it returns TRUE,
  * the plugin can do additional checks (e.g. whether or not it has an
  * effect for the request). The interface is kept in line with the
  * definition in NSinkInterfaceDecl, so in case the plugin does not have
