@@ -69,7 +69,7 @@ int ffmemless_erase_effect(int effect_id, int device_file)
 
 int ffmemless_evdev_file_open(const char *file_name, unsigned long features[4])
 {
-	int result, fp;
+	int fp;
 
 	fp = open(file_name, O_RDWR | O_CLOEXEC);
 

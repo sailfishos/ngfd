@@ -256,8 +256,8 @@ n_core_stop_sinks (GList *sinks, NRequest *request)
 
     for (iter = g_list_first (sinks); iter; iter = g_list_next (iter)) {
         sink = (NSinkInterface*) iter->data;
-	 if (sink && sink->funcs.stop)
-	     sink->funcs.stop (sink, request);
+        if (sink && sink->funcs.stop)
+            sink->funcs.stop (sink, request);
     }
 }
 
