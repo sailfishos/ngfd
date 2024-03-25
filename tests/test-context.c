@@ -32,7 +32,6 @@ START_TEST (test_set_get_value)
 
     fail_unless (n_value_equals (ret_val, value) == TRUE);
 
-    n_value_free (value);
     value = NULL;
     n_context_free (context);
     context = NULL;

@@ -413,7 +413,6 @@ START_TEST (test_set_get_unset)
 
     n_proplist_free (proplist);
     proplist = NULL;
-    n_value_free (value);
     value = NULL;
 }
 END_TEST

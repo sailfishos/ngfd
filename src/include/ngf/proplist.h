@@ -106,7 +106,7 @@ gboolean    n_proplist_match_exact (const NProplist *a, const NProplist *b);
 /** Insert or update key/value pair in proplist
  * @param proplist Proplist
  * @param key Key
- * @param value Value
+ * @param value Value. Proplist takes ownership of the value.
  */
 void        n_proplist_set         (NProplist *proplist, const char *key, const NValue *value);
 

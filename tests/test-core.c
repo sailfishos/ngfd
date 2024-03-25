@@ -83,7 +83,6 @@ START_TEST (test_add_get_events)
     NEvent *receivedEvent = (NEvent*)events->data;
     fail_unless (g_strcmp0 (receivedEvent->name, "sms") == 0);
 
-    g_list_free (events);
     events = NULL;
     n_core_free (core);
     core = NULL;
