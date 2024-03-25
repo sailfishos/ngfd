@@ -10,17 +10,17 @@ START_TEST (test_get_core)
 {
     NInputInterface *iface = NULL;
     iface = g_new0 (NInputInterface, 1);
-    fail_unless (iface != NULL);
+    ck_assert (iface != NULL);
     /* NULL checking */
-    fail_unless (n_input_interface_get_core (iface) == NULL);
+    ck_assert (n_input_interface_get_core (iface) == NULL);
     NCore *core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     core->conf_path = g_strdup ("conf_path");
     iface->core = core;
     NCore *receivedCore = NULL;
     receivedCore = n_input_interface_get_core (iface);
-    fail_unless (receivedCore != NULL);
-    fail_unless (g_strcmp0 (receivedCore->conf_path, core->conf_path) == 0);
+    ck_assert (receivedCore != NULL);
+    ck_assert (g_strcmp0 (receivedCore->conf_path, core->conf_path) == 0);
 
     n_core_free (core);
     core = NULL;
@@ -96,7 +96,7 @@ START_TEST (test_play_pause_request)
 
     NInputInterface *iface = NULL;
     iface = g_new0 (NInputInterface, 1);
-    fail_unless (iface != NULL);
+    ck_assert (iface != NULL);
     NCore *core = n_core_new (NULL, NULL);
     const char *event_name = "testing_event";
 
@@ -107,34 +107,34 @@ START_TEST (test_play_pause_request)
     g_key_file_free (keyfile);
 
     NPlugin *plugin = g_new0 (NPlugin, 1);
-    fail_unless (plugin != NULL);
+    ck_assert (plugin != NULL);
     plugin->core = core;
     n_plugin_register_sink (plugin, &decl);
     iface->core = core;
     NRequest *request = NULL;
     NProplist *proplist = n_proplist_new ();
     request = n_request_new_with_event_and_properties (event_name, proplist);
-    fail_unless (request != NULL);
+    ck_assert (request != NULL);
     Data *data = NULL;
     /* play */
-    fail_unless (n_input_interface_play_request (NULL, request) == FALSE);
-    fail_unless (n_input_interface_play_request (iface, NULL) == FALSE);
-    fail_unless (n_input_interface_play_request (iface, request) == TRUE);
+    ck_assert (n_input_interface_play_request (NULL, request) == FALSE);
+    ck_assert (n_input_interface_play_request (iface, NULL) == FALSE);
+    ck_assert (n_input_interface_play_request (iface, request) == TRUE);
     data = (Data*) n_request_get_data (request, DATA_KEY);
-    fail_unless (data->state == PREPARED);
+    ck_assert (data->state == PREPARED);
     /* pause*/
-    fail_unless (n_input_interface_pause_request (NULL, request) == FALSE);
-    fail_unless (n_input_interface_pause_request (iface, NULL) == FALSE);
-    fail_unless (n_input_interface_pause_request (iface, request) == TRUE);
+    ck_assert (n_input_interface_pause_request (NULL, request) == FALSE);
+    ck_assert (n_input_interface_pause_request (iface, NULL) == FALSE);
+    ck_assert (n_input_interface_pause_request (iface, request) == TRUE);
     data = (Data*) n_request_get_data (request, DATA_KEY);
-    fail_unless (data->state == PAUSED);
-    fail_unless (n_input_interface_pause_request (iface, request) == TRUE);
+    ck_assert (data->state == PAUSED);
+    ck_assert (n_input_interface_pause_request (iface, request) == TRUE);
     data = (Data*) n_request_get_data (request, DATA_KEY);
-    fail_unless (data->state == PAUSED);
+    ck_assert (data->state == PAUSED);
     /* resume */
-    fail_unless (n_input_interface_play_request (iface, request) == TRUE);
+    ck_assert (n_input_interface_play_request (iface, request) == TRUE);
     data = (Data*) n_request_get_data (request, DATA_KEY);
-    fail_unless (data->state == PLAYING);
+    ck_assert (data->state == PLAYING);
     
     g_free (iface);
     iface = NULL;

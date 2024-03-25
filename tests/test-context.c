@@ -8,7 +8,7 @@ START_TEST (test_set_get_value)
 {
     NContext *context = NULL;
     context = n_context_new ();
-    fail_unless (context != NULL);
+    ck_assert (context != NULL);
 
     const char *key = "key";
     NValue *value = NULL;
@@ -17,20 +17,20 @@ START_TEST (test_set_get_value)
     n_value_set_int (value, -100);
 
     /* gets value with some NULL arguments */
-    fail_unless (n_context_get_value (context, NULL) == NULL);
-    fail_unless (n_context_get_value (NULL, key) == NULL);
+    ck_assert (n_context_get_value (context, NULL) == NULL);
+    ck_assert (n_context_get_value (NULL, key) == NULL);
 
     /* sets value sith some NULL arguments */
     n_context_set_value (NULL, key, value);
-    fail_unless (n_context_get_value (context, key) == NULL);
+    ck_assert (n_context_get_value (context, key) == NULL);
     n_context_set_value (context, NULL, value);
-    fail_unless (n_context_get_value (context, key) == NULL);
+    ck_assert (n_context_get_value (context, key) == NULL);
 
     /* calls set value with valid arguments */
     n_context_set_value (context, key, value);
     const NValue *ret_val = n_context_get_value (context, key);
 
-    fail_unless (n_value_equals (ret_val, value) == TRUE);
+    ck_assert (n_value_equals (ret_val, value) == TRUE);
 
     value = NULL;
     n_context_free (context);
@@ -51,46 +51,46 @@ START_TEST (test_subscribe_unsubscribe_value_change)
 {
     NContext *context = NULL;
     context = n_context_new ();
-    fail_unless (context != NULL);
+    ck_assert (context != NULL);
     const char *key = "key";
     gboolean result = TRUE;
     int item = 0;
 
     /* subscribe */
     result = n_context_subscribe_value_change (NULL, key, n_context_callback, NULL);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
     item = g_hash_table_size (context->keys);
-    fail_unless (item == 0);
+    ck_assert (item == 0);
     result = n_context_subscribe_value_change (context, key, NULL, NULL);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
     item = g_hash_table_size (context->keys);
-    fail_unless (item == 0);
+    ck_assert (item == 0);
     /* proper subscribtion */
     result = n_context_subscribe_value_change (context, key, n_context_callback, NULL);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
     item = g_hash_table_size (context->keys);
-    fail_unless (item == 1);
+    ck_assert (item == 1);
 
     /* unsubscribe */
     n_context_unsubscribe_value_change (NULL, key, n_context_callback);
     item = g_hash_table_size (context->keys);
-    fail_unless (item == 1);
+    ck_assert (item == 1);
     n_context_unsubscribe_value_change (context, NULL, n_context_callback);
     item = g_hash_table_size (context->keys);
-    fail_unless (item == 1);
+    ck_assert (item == 1);
     n_context_unsubscribe_value_change (context, key, NULL);
     item = g_hash_table_size (context->keys);
-    fail_unless (item == 1);
+    ck_assert (item == 1);
     /* proper unsubscribtion */
     n_context_unsubscribe_value_change (context, key, n_context_callback);
     item = g_hash_table_size (context->keys);
-    fail_unless (item == 0);
+    ck_assert (item == 0);
 
     /* subscribe callback to key=NULL */
     result = n_context_subscribe_value_change (context, NULL, n_context_callback, NULL);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
     item = g_list_length (context->all_keys);
-    fail_unless (item == 1);
+    ck_assert (item == 1);
     /*
      * TODO: unsubscribe callback when key=NULL
      * */

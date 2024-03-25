@@ -9,7 +9,7 @@ START_TEST (test_create)
 {
     NEvent *event = NULL;
     event = n_event_new ();
-    fail_unless (event != NULL);
+    ck_assert (event != NULL);
 
     n_event_free (event);
     event = NULL;
