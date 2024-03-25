@@ -39,7 +39,7 @@ typedef void (*NContextValueChangeFunc) (NContext *context,
  *
  * @param context NContext structure.
  * @param key Key.
- * @param value Values as NValue type.
+ * @param value Values as NValue type. Context takes over the ownership.
  */
 void          n_context_set_value                (NContext *context, const char *key,
                                                   NValue *value);

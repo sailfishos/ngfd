@@ -9,29 +9,29 @@ START_TEST (test_match_exact)
 {
     NProplist *proplistA = NULL;
     proplistA = n_proplist_new ();
-    fail_unless (proplistA != NULL);
+    ck_assert (proplistA != NULL);
     NProplist *proplistB = NULL;
     proplistB = n_proplist_new ();
-    fail_unless (proplistB != NULL);
+    ck_assert (proplistB != NULL);
     const char* key1 = "key1";
     const char* key2 = "key2";
 
     gboolean result = n_proplist_match_exact (NULL, proplistB);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
     result = n_proplist_match_exact (proplistA, NULL);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
 
     n_proplist_set_int (proplistA, key1, 100);
     result = n_proplist_match_exact (proplistA, proplistB);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
     n_proplist_set_int (proplistB, key1, 100);
     result = n_proplist_match_exact (proplistA, proplistB);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
 
     n_proplist_set_bool (proplistA, key2, TRUE);
     n_proplist_set_bool (proplistB, key2, FALSE);
     result = n_proplist_match_exact (proplistA, proplistB);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
 
     n_proplist_free (proplistA);
     proplistA = NULL;
@@ -45,19 +45,19 @@ START_TEST (test_copy)
 {
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     NProplist *copy = NULL;
     copy = n_proplist_copy (NULL);
-    fail_unless (copy == NULL);
+    ck_assert (copy == NULL);
     copy = n_proplist_copy (proplist);
-    fail_unless (copy != NULL);
-    fail_unless (n_proplist_match_exact (proplist, copy) == TRUE);
+    ck_assert (copy != NULL);
+    ck_assert (n_proplist_match_exact (proplist, copy) == TRUE);
     n_proplist_set_int (proplist, "key", 100);
     n_proplist_free (copy);
     copy = NULL;
     copy = n_proplist_copy (proplist);
-    fail_unless (copy != NULL);
-    fail_unless (n_proplist_match_exact (proplist, copy) == TRUE);
+    ck_assert (copy != NULL);
+    ck_assert (n_proplist_match_exact (proplist, copy) == TRUE);
     
     n_proplist_free (copy);
     copy = NULL;
@@ -70,12 +70,12 @@ START_TEST (test_copy_keys)
 {
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     NProplist *keys = NULL;
     GList *list = NULL;
     keys = n_proplist_copy_keys (proplist, list);
-    fail_unless (keys != NULL);
-    fail_unless (n_proplist_is_empty (keys) == TRUE);
+    ck_assert (keys != NULL);
+    ck_assert (n_proplist_is_empty (keys) == TRUE);
     n_proplist_free (keys);
     keys = NULL;
 	    
@@ -85,28 +85,28 @@ START_TEST (test_copy_keys)
     list = g_list_append (list, (gpointer)key2);
 
     keys = n_proplist_copy_keys (NULL, list);
-    fail_unless (keys != NULL);
-    fail_unless (n_proplist_is_empty (keys) == TRUE);
+    ck_assert (keys != NULL);
+    ck_assert (n_proplist_is_empty (keys) == TRUE);
     n_proplist_free (keys);
     keys = NULL;
     keys = n_proplist_copy_keys (proplist, NULL);
-    fail_unless (keys != NULL);
-    fail_unless (n_proplist_is_empty (keys) == TRUE);
+    ck_assert (keys != NULL);
+    ck_assert (n_proplist_is_empty (keys) == TRUE);
     n_proplist_free (keys);
     keys = NULL;
 
     keys = n_proplist_copy_keys (proplist, list);
-    fail_unless (keys != NULL);
-    fail_unless (n_proplist_is_empty (keys) == TRUE);
+    ck_assert (keys != NULL);
+    ck_assert (n_proplist_is_empty (keys) == TRUE);
     n_proplist_set_bool (proplist, key1, FALSE);
     n_proplist_set_uint (proplist, key2, val_key2);
     n_proplist_free (keys);
     keys = NULL;
     keys = n_proplist_copy_keys (proplist, list);
-    fail_unless (keys != NULL);
-    fail_unless (n_proplist_is_empty (keys) == FALSE);
-    fail_unless (n_proplist_size (keys) == 1);
-    fail_unless (n_proplist_get_uint (keys, key2) == val_key2);
+    ck_assert (keys != NULL);
+    ck_assert (n_proplist_is_empty (keys) == FALSE);
+    ck_assert (n_proplist_size (keys) == 1);
+    ck_assert (n_proplist_get_uint (keys, key2) == val_key2);
     
     g_list_free (list);
     list = NULL;
@@ -122,10 +122,10 @@ START_TEST (test_merge)
 {
     NProplist *source = NULL;
     source = n_proplist_new ();
-    fail_unless (source != NULL);
+    ck_assert (source != NULL);
     NProplist *target = NULL;
     target = n_proplist_new ();
-    fail_unless (target != NULL);
+    ck_assert (target != NULL);
     static char* keys[] = {"key1", "key2", "key3", "key4", "key5"};
     uint i = 0;
     for (i = 0; i < ARRAY_SIZE (keys); i++)
@@ -144,14 +144,14 @@ START_TEST (test_merge)
     NProplist *sourceCopy = n_proplist_copy (source);
     
     n_proplist_merge (NULL, source);
-    fail_unless (n_proplist_has_key (target, new_key) == FALSE);
-    fail_unless (n_proplist_match_exact (target, targetCopy) == TRUE);
-    fail_unless (n_proplist_match_exact (source, sourceCopy) == TRUE);
+    ck_assert (n_proplist_has_key (target, new_key) == FALSE);
+    ck_assert (n_proplist_match_exact (target, targetCopy) == TRUE);
+    ck_assert (n_proplist_match_exact (source, sourceCopy) == TRUE);
     
     n_proplist_merge (target, NULL);
-    fail_unless (n_proplist_has_key (target, new_key) == FALSE);
-    fail_unless (n_proplist_match_exact (target, targetCopy) == TRUE);
-    fail_unless (n_proplist_match_exact (source, sourceCopy) == TRUE);
+    ck_assert (n_proplist_has_key (target, new_key) == FALSE);
+    ck_assert (n_proplist_match_exact (target, targetCopy) == TRUE);
+    ck_assert (n_proplist_match_exact (source, sourceCopy) == TRUE);
     
 
     /* Two keys are common (will be replaces),
@@ -161,13 +161,13 @@ START_TEST (test_merge)
     n_proplist_merge (target, source);
     //n_proplist_foreach (target, listing, NULL);
     
-    fail_unless (n_proplist_match_exact (target, targetCopy) == FALSE);
-    fail_unless (n_proplist_match_exact (source, sourceCopy) == TRUE);
-    fail_unless (n_proplist_size (target) == ARRAY_SIZE (keys) + 1);
+    ck_assert (n_proplist_match_exact (target, targetCopy) == FALSE);
+    ck_assert (n_proplist_match_exact (source, sourceCopy) == TRUE);
+    ck_assert (n_proplist_size (target) == ARRAY_SIZE (keys) + 1);
     const char *merged1 = n_proplist_get_string (target, merge_key1);
-    fail_unless (g_strcmp0 (key1_value, merged1) == 0);
+    ck_assert (g_strcmp0 (key1_value, merged1) == 0);
     int merged2 = n_proplist_get_int (target, merge_key2);
-    fail_unless (merged2 == ARRAY_SIZE (keys));
+    ck_assert (merged2 == ARRAY_SIZE (keys));
     
     n_proplist_free (sourceCopy);
     sourceCopy = NULL;
@@ -194,10 +194,10 @@ START_TEST (test_merge_keys)
 {
     NProplist *source = NULL;
     source = n_proplist_new ();
-    fail_unless (source != NULL);   
+    ck_assert (source != NULL);
     NProplist *target = NULL;
     target = n_proplist_new ();
-    fail_unless (target != NULL);
+    ck_assert (target != NULL);
 
     /* keys and values at the same time */
     static char* keys[] = {"key1", "key2", "key3", "key4",
@@ -228,30 +228,30 @@ START_TEST (test_merge_keys)
     NProplist *targetCopy = n_proplist_copy (target);
     
     n_proplist_merge_keys (NULL, source, list);
-    fail_unless (n_proplist_match_exact (source, sourceCopy) == TRUE);
-    fail_unless (n_proplist_match_exact (target, targetCopy) == TRUE);
+    ck_assert (n_proplist_match_exact (source, sourceCopy) == TRUE);
+    ck_assert (n_proplist_match_exact (target, targetCopy) == TRUE);
     
     n_proplist_merge_keys (target, NULL, list);
-    fail_unless (n_proplist_match_exact (source, sourceCopy) == TRUE);
-    fail_unless (n_proplist_match_exact (target, targetCopy) == TRUE);
+    ck_assert (n_proplist_match_exact (source, sourceCopy) == TRUE);
+    ck_assert (n_proplist_match_exact (target, targetCopy) == TRUE);
     
     /* copy of target proplist to check merge_keys with NULL GList = normal merge in the next line */
     NProplist *secondTarget = n_proplist_copy (target);
     /* first half of seconfTarget will be fill with ints from source */
     n_proplist_merge_keys (secondTarget, source, NULL);
     //n_proplist_foreach (secondTarget, listing, NULL);
-    fail_unless (n_proplist_match_exact (target, secondTarget) == FALSE);
+    ck_assert (n_proplist_match_exact (target, secondTarget) == FALSE);
     for (i = 0; i < ARRAY_SIZE (keys); i++)
     {
         if (i < ARRAY_SIZE (keys) / 2)
         {
             int result = n_proplist_get_int (secondTarget, keys[i]);
-            fail_unless (result == i_values[i]);
+            ck_assert (result == i_values[i]);
         }
         else
         {
             const char *result = n_proplist_get_string (secondTarget, keys[i]);
-            fail_unless (g_strcmp0 (result, keys[i]) == 0);
+            ck_assert (g_strcmp0 (result, keys[i]) == 0);
         }
     }
     
@@ -259,20 +259,20 @@ START_TEST (test_merge_keys)
      * first 1/4 of the elements from target will be int type */
     n_proplist_merge_keys (target, source, list);
     //n_proplist_foreach (target, listing, NULL);
-    fail_unless (n_proplist_match_exact (target, targetCopy) == FALSE);
-    fail_unless (n_proplist_match_exact (source, sourceCopy) == TRUE);
+    ck_assert (n_proplist_match_exact (target, targetCopy) == FALSE);
+    ck_assert (n_proplist_match_exact (source, sourceCopy) == TRUE);
 
     for (i = 0; i < ARRAY_SIZE (keys); i++)
     {
         if (i < n_list)
 	{
             int result = n_proplist_get_int (target, keys[i]);
-            fail_unless (result == i_values[i]);
+            ck_assert (result == i_values[i]);
 	}
 	else
 	{
             const char *result = n_proplist_get_string (target, keys[i]);
-	    fail_unless (g_strcmp0 (result, keys[i]) == 0);
+        ck_assert (g_strcmp0 (result, keys[i]) == 0);
 	}
     }
     
@@ -294,14 +294,14 @@ START_TEST (test_size)
     const char *key = "ngf";
     NProplist *proplist = NULL;
     int size = n_proplist_size (proplist);
-    fail_unless (size == 0);
+    ck_assert (size == 0);
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     size = n_proplist_size (proplist);
-    fail_unless (size == 0);
+    ck_assert (size == 0);
     n_proplist_set_pointer (proplist, key, proplist);
     size = n_proplist_size (proplist);
-    fail_unless (size == 1);
+    ck_assert (size == 1);
 
     n_proplist_free (proplist);
     proplist = NULL;
@@ -321,13 +321,13 @@ START_TEST (test_foreach)
 {
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     uint i = 0, check_n = 0;
     char* keys[] = { "random", "data", "keys"};
     for (i = 0; i < ARRAY_SIZE (keys); i++)
         n_proplist_set_string (proplist, keys[i], keys[i]);
     n_proplist_foreach (proplist, n_proplist_Callback, &check_n);
-    fail_unless (check_n == ARRAY_SIZE (keys));
+    ck_assert (check_n == ARRAY_SIZE (keys));
 
     n_proplist_free (proplist);
     proplist = NULL;
@@ -339,14 +339,14 @@ START_TEST (test_is_empty)
     const char *key = "ngf";
     NProplist *proplist = NULL;
     gboolean result = n_proplist_is_empty (proplist);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     result = n_proplist_is_empty (proplist);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
     n_proplist_set_pointer (proplist, key, proplist);
     result = n_proplist_is_empty (proplist);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
 
     n_proplist_free (proplist);
     proplist = NULL;
@@ -357,18 +357,18 @@ START_TEST (test_has_key)
 {
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     const char *key = "key";
     gboolean result = n_proplist_has_key (proplist, key);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
     result = n_proplist_has_key (NULL, key);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
 //    result = n_proplist_has_key (proplist, NULL);
-//    fail_unless (result == FALSE);
+//    ck_assert (result == FALSE);
     
     n_proplist_set_int (proplist, key, 100);
     result = n_proplist_has_key (proplist, key);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
 
     n_proplist_free (proplist);
     proplist = NULL;
@@ -379,7 +379,7 @@ START_TEST (test_set_get_unset)
 {
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     NValue *value = NULL;
     value = n_value_new ();
     n_value_set_int (value, 100);
@@ -387,33 +387,32 @@ START_TEST (test_set_get_unset)
     const char *key = "key";
     
     n_proplist_set (NULL, key, value);
-    fail_unless (n_proplist_is_empty (proplist) == TRUE);
+    ck_assert (n_proplist_is_empty (proplist) == TRUE);
     n_proplist_set (proplist, NULL, value);
-    fail_unless (n_proplist_is_empty (proplist) == TRUE);
+    ck_assert (n_proplist_is_empty (proplist) == TRUE);
     n_proplist_set (proplist, key, NULL);
-    fail_unless (n_proplist_is_empty (proplist) == TRUE);
+    ck_assert (n_proplist_is_empty (proplist) == TRUE);
     n_proplist_set (proplist, key, value);
-    fail_unless (n_proplist_size (proplist) == 1);
+    ck_assert (n_proplist_size (proplist) == 1);
 
     result = n_proplist_get (NULL, key);
-    fail_unless (result == NULL);
+    ck_assert (result == NULL);
     result = n_proplist_get (proplist, NULL);
-    fail_unless (result == NULL);
+    ck_assert (result == NULL);
     result = n_proplist_get (proplist, key);
-    fail_unless (result == value);
-    fail_unless (n_value_equals (result, value) == TRUE);
+    ck_assert (result == value);
+    ck_assert (n_value_equals (result, value) == TRUE);
 
     n_proplist_unset (NULL, key);
-    fail_unless (n_proplist_size (proplist) == 1);
+    ck_assert (n_proplist_size (proplist) == 1);
     n_proplist_unset (proplist, NULL);
-    fail_unless (n_proplist_size (proplist) == 1);
+    ck_assert (n_proplist_size (proplist) == 1);
     n_proplist_unset (proplist, key);
-    fail_unless (n_proplist_is_empty (proplist) == TRUE);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_is_empty (proplist) == TRUE);
+    ck_assert (n_proplist_size (proplist) == 0);
 
     n_proplist_free (proplist);
     proplist = NULL;
-    n_value_free (value);
     value = NULL;
 }
 END_TEST
@@ -423,30 +422,30 @@ START_TEST (test_proplist_values)
 {
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     const char *key = "ngf";
     const char *value_str = "ValuE";
 
     /* string */    
     n_proplist_set_string (NULL, key, value_str);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
     n_proplist_set_string (proplist, NULL, value_str);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
     n_proplist_set_string (proplist, key, NULL);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
 
     n_proplist_set_string (proplist, key, value_str);
-    fail_unless (n_proplist_size (proplist) == 1);
+    ck_assert (n_proplist_size (proplist) == 1);
     const char *result_str = n_proplist_get_string (proplist, key);
-    fail_unless (result_str != NULL);
-    fail_unless (g_strcmp0 (result_str, value_str) == 0);
-    fail_unless (n_proplist_get_string (NULL, key) == NULL);
-    fail_unless (n_proplist_get_string (proplist, NULL) == NULL);
+    ck_assert (result_str != NULL);
+    ck_assert (g_strcmp0 (result_str, value_str) == 0);
+    ck_assert (n_proplist_get_string (NULL, key) == NULL);
+    ck_assert (n_proplist_get_string (proplist, NULL) == NULL);
 
     /* duplicate string */
     char *duplicate = n_proplist_dup_string (proplist, key);
-    fail_unless (duplicate != NULL);
-    fail_unless (g_strcmp0 (duplicate, value_str) == 0);
+    ck_assert (duplicate != NULL);
+    ck_assert (g_strcmp0 (duplicate, value_str) == 0);
 
     n_proplist_free (proplist);
     proplist = NULL;
@@ -454,83 +453,83 @@ START_TEST (test_proplist_values)
     duplicate = NULL;
 
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     int value = -100;
 
     /* int */
     n_proplist_set_int (NULL, key, value);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
     n_proplist_set_int (proplist, NULL, value);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
 
     n_proplist_set_int (proplist, key, value);
-    fail_unless (n_proplist_size (proplist) == 1);
+    ck_assert (n_proplist_size (proplist) == 1);
     int result_int = n_proplist_get_int (proplist, key);
-    fail_unless (result_int == value);
-    fail_unless (n_proplist_get_int (NULL, key) == 0);
-    fail_unless (n_proplist_get_int (proplist, NULL) == 0);
+    ck_assert (result_int == value);
+    ck_assert (n_proplist_get_int (NULL, key) == 0);
+    ck_assert (n_proplist_get_int (proplist, NULL) == 0);
 
     n_proplist_free (proplist);
     proplist = NULL;
 
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     uint value_uint = 100;
 
     /* uint */
     n_proplist_set_uint (NULL, key, value_uint);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
     n_proplist_set_uint (proplist, NULL, value_uint);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
     
     n_proplist_set_uint (proplist, key, value_uint);
-    fail_unless (n_proplist_size (proplist) == 1);
+    ck_assert (n_proplist_size (proplist) == 1);
     uint result_uint = n_proplist_get_uint (proplist, key);
-    fail_unless (result_uint == value_uint);
-    fail_unless (n_proplist_get_uint (NULL, key) == 0);
-    fail_unless (n_proplist_get_uint (proplist, NULL) == 0);
+    ck_assert (result_uint == value_uint);
+    ck_assert (n_proplist_get_uint (NULL, key) == 0);
+    ck_assert (n_proplist_get_uint (proplist, NULL) == 0);
 
     n_proplist_free (proplist);
     proplist = NULL;
     
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     gboolean value_bool = TRUE;
 
     /* bool */
     n_proplist_set_bool (NULL, key, value_bool);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
     n_proplist_set_bool (proplist, NULL, value_bool);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
     
     n_proplist_set_bool (proplist, key, value_bool);
-    fail_unless (n_proplist_size (proplist) == 1);
+    ck_assert (n_proplist_size (proplist) == 1);
     gboolean result_bool = n_proplist_get_bool (proplist, key);
-    fail_unless (result_bool == value_bool);
-    fail_unless (n_proplist_get_bool (NULL, key) == FALSE);
-    fail_unless (n_proplist_get_bool (proplist, NULL) == FALSE);
+    ck_assert (result_bool == value_bool);
+    ck_assert (n_proplist_get_bool (NULL, key) == FALSE);
+    ck_assert (n_proplist_get_bool (proplist, NULL) == FALSE);
 
     n_proplist_free (proplist);
     proplist = NULL;
     
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     gpointer value_gpointer = proplist;
     
     /* gpointer */
     n_proplist_set_pointer (NULL, key, value_gpointer);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
     n_proplist_set_pointer (proplist, NULL, value_gpointer);
-    fail_unless (n_proplist_size (proplist) == 0);
+    ck_assert (n_proplist_size (proplist) == 0);
 //    n_proplist_set_pointer (proplist, key, NULL);
-//    fail_unless (n_proplist_size (proplist) == 0);
+//    ck_assert (n_proplist_size (proplist) == 0);
     
     n_proplist_set_pointer (proplist, key, value_gpointer);
-    fail_unless (n_proplist_size (proplist) == 1);
+    ck_assert (n_proplist_size (proplist) == 1);
     gpointer result_gpointer = n_proplist_get_pointer (proplist, key);
-    fail_unless (result_gpointer == value_gpointer);
-    fail_unless (n_proplist_get_pointer (NULL, key) == 0);
-    fail_unless (n_proplist_get_pointer (proplist, NULL) == 0);
+    ck_assert (result_gpointer == value_gpointer);
+    ck_assert (n_proplist_get_pointer (NULL, key) == 0);
+    ck_assert (n_proplist_get_pointer (proplist, NULL) == 0);
 
     n_proplist_free (proplist);
     proplist = NULL;

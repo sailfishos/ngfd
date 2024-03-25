@@ -8,17 +8,17 @@ START_TEST (test_create)
 {
     NRequest *request = NULL;
     request = n_request_new ();
-    fail_unless (request != NULL);
-    fail_unless (n_request_get_name (request) == NULL);
+    ck_assert (request != NULL);
+    ck_assert (n_request_get_name (request) == NULL);
     n_request_free (request);
     request = NULL;
 
     /* create request with event name */
     const char *event = "event";
     request = n_request_new_with_event (event);
-    fail_unless (request != NULL);
+    ck_assert (request != NULL);
     const char *name = n_request_get_name (request);
-    fail_unless (g_strcmp0 (name, event) == 0);
+    ck_assert (g_strcmp0 (name, event) == 0);
     n_request_free (request);
     request = NULL;
 
@@ -26,22 +26,22 @@ START_TEST (test_create)
     const char *key = "key";
     int value = -100;
     NProplist *proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     n_proplist_set_int (proplist, key, value);
     request = n_request_new_with_event_and_properties (NULL, proplist);
-    fail_unless (request == NULL);
+    ck_assert (request == NULL);
     request = n_request_new_with_event_and_properties (event, NULL);
-    fail_unless (request != NULL);
-    fail_unless (n_request_get_properties (request) == NULL);
+    ck_assert (request != NULL);
+    ck_assert (n_request_get_properties (request) == NULL);
     n_request_free (request);
     request = NULL;
     
     request = n_request_new_with_event_and_properties (event, proplist);
     const NProplist *set = n_request_get_properties (request);
-    fail_unless (n_proplist_match_exact (set, proplist) == TRUE);
+    ck_assert (n_proplist_match_exact (set, proplist) == TRUE);
     name = NULL;
     name = n_request_get_name (request);
-    fail_unless (g_strcmp0 (name, event) == 0);
+    ck_assert (g_strcmp0 (name, event) == 0);
     
     n_proplist_free (proplist);
     proplist = NULL;
@@ -54,33 +54,33 @@ START_TEST (test_properties)
 {
     NRequest *request = NULL;
     request = n_request_new ();
-    fail_unless (request != NULL);
+    ck_assert (request != NULL);
     NProplist *proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     const char *key = "key";
     /* set pointer to proplist */
     n_proplist_set_pointer (proplist, key, (gpointer)request);
     /* get properties from NULL request */
-    fail_unless (n_request_get_properties (NULL) == NULL);
+    ck_assert (n_request_get_properties (NULL) == NULL);
     
     n_request_set_properties (NULL, proplist);
-    fail_unless (n_request_get_properties (request) == NULL);
+    ck_assert (n_request_get_properties (request) == NULL);
     
     n_request_set_properties (request, NULL);
-    fail_unless (n_request_get_properties (request) == NULL);
+    ck_assert (n_request_get_properties (request) == NULL);
     
     n_request_set_properties (request, proplist);
     const NProplist *set = n_request_get_properties (request);
-    fail_unless (n_proplist_match_exact (set, proplist) == TRUE);
+    ck_assert (n_proplist_match_exact (set, proplist) == TRUE);
 
     n_request_set_properties (NULL, proplist);
     set = NULL;
     set = n_request_get_properties (request);
-    fail_unless (n_proplist_match_exact (set, proplist) == TRUE);
+    ck_assert (n_proplist_match_exact (set, proplist) == TRUE);
     n_request_set_properties (request, NULL);
     set = NULL;
     set = n_request_get_properties (request);
-    fail_unless (n_proplist_match_exact (set, proplist) == TRUE);
+    ck_assert (n_proplist_match_exact (set, proplist) == TRUE);
     
     n_proplist_free (proplist);
     proplist = NULL;
@@ -93,30 +93,30 @@ START_TEST (test_data)
 {
     NRequest *request = NULL;
     request = n_request_new ();
-    fail_unless (request != NULL);
+    ck_assert (request != NULL);
     const char *key = "key";
     NProplist *proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     n_request_set_properties (request, proplist);
     n_proplist_free (proplist);
     proplist = NULL;
 
-    fail_unless (n_request_get_data (NULL, key) == NULL);
-    fail_unless (n_request_get_data (request, NULL) == NULL);
-    fail_unless (n_request_get_data (request, key) == NULL);
+    ck_assert (n_request_get_data (NULL, key) == NULL);
+    ck_assert (n_request_get_data (request, NULL) == NULL);
+    ck_assert (n_request_get_data (request, key) == NULL);
 
     void *data;
     n_request_store_data (NULL, key, request);
     data = n_request_get_data (request, key);
-    fail_unless (data == NULL);
+    ck_assert (data == NULL);
     n_request_store_data (request, NULL, request);
     data = n_request_get_data (request, key);
-    fail_unless (data == NULL);
+    ck_assert (data == NULL);
     n_request_store_data (request, key, request);
     /* verification */
     data = n_request_get_data (request, key);
-    fail_unless (data != NULL);
-    fail_unless (data == request);
+    ck_assert (data != NULL);
+    ck_assert (data == request);
 
     n_request_free (request);
     request = NULL;

@@ -12,14 +12,14 @@ START_TEST (test_get_core_and_name)
 {
     NSinkInterface *iface = NULL;
     iface = g_new0 (NSinkInterface, 1);
-    fail_unless (iface != NULL);
+    ck_assert (iface != NULL);
     
-    fail_unless (n_sink_interface_get_core (NULL) == NULL);
-    fail_unless (n_sink_interface_get_name (NULL) == NULL);
+    ck_assert (n_sink_interface_get_core (NULL) == NULL);
+    ck_assert (n_sink_interface_get_name (NULL) == NULL);
 
     NCore *core = NULL;
     core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     core->conf_path = g_strdup ("path");
     iface->core = core;
 
@@ -27,12 +27,12 @@ START_TEST (test_get_core_and_name)
     iface->name = name;
 
     const char *receivedName = n_sink_interface_get_name (iface);
-    fail_unless (receivedName != NULL);
-    fail_unless (g_strcmp0 (receivedName, name) == 0);
+    ck_assert (receivedName != NULL);
+    ck_assert (g_strcmp0 (receivedName, name) == 0);
 
     NCore *receivedCore = n_sink_interface_get_core (iface);
-    fail_unless (receivedCore != NULL);
-    fail_unless (g_strcmp0 (core->conf_path, receivedCore->conf_path) == 0);
+    ck_assert (receivedCore != NULL);
+    ck_assert (g_strcmp0 (core->conf_path, receivedCore->conf_path) == 0);
     
     n_core_free (core);
     core = NULL;
@@ -45,38 +45,38 @@ START_TEST (test_resync_on_master)
 {
     NSinkInterface *iface = NULL;
     iface = g_new0 (NSinkInterface, 1);
-    fail_unless (iface != NULL);
+    ck_assert (iface != NULL);
     const char *name = "TEST_RESYNC_ON_MASTER_sink_name";
     iface->name = name;
     NRequest *request = NULL;
     request = n_request_new ();
-    fail_unless (request != NULL);
+    ck_assert (request != NULL);
     const char *req_name = "TEST_RESYNC_ON_MASTER_REQUST_name";
     request->name = g_strdup (req_name);
     request->sinks_resync = NULL;
     NCore *core = NULL;
     core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     iface->core = core;
     request->core = core;
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     n_request_set_properties (request, proplist);
     n_proplist_free (proplist);
     proplist = NULL;
 
     /* test for invalid parameter */
     n_sink_interface_set_resync_on_master (NULL, request);
-    fail_unless (request->sinks_resync == NULL);
+    ck_assert (request->sinks_resync == NULL);
     /* test for invalid parameter */
     n_sink_interface_set_resync_on_master (iface, NULL);
-    fail_unless (request->sinks_resync == NULL);
+    ck_assert (request->sinks_resync == NULL);
 
     /* master_sink = sink */
     request->master_sink = iface;
     n_sink_interface_set_resync_on_master (iface, request);
-    fail_unless (request->sinks_resync == NULL);
+    ck_assert (request->sinks_resync == NULL);
 
     
     request->master_sink = NULL;
@@ -87,14 +87,14 @@ START_TEST (test_resync_on_master)
     
     /* add proper sink do resync sinks */
     n_sink_interface_set_resync_on_master (iface, request);
-    fail_unless (request->sinks_resync != NULL);
-    fail_unless (g_list_length (request->sinks_resync) == 1);
-    fail_unless (g_list_find (request->sinks_resync, iface) != NULL);
+    ck_assert (request->sinks_resync != NULL);
+    ck_assert (g_list_length (request->sinks_resync) == 1);
+    ck_assert (g_list_find (request->sinks_resync, iface) != NULL);
 
     /* readd sink that is already synced */
     n_sink_interface_set_resync_on_master (iface, request);
-    fail_unless (request->sinks_resync != NULL);
-    fail_unless (g_list_length (request->sinks_resync) == 1);
+    ck_assert (request->sinks_resync != NULL);
+    ck_assert (g_list_length (request->sinks_resync) == 1);
 
     g_free (master_sink);
     master_sink = NULL;
@@ -135,55 +135,55 @@ START_TEST (test_resynchronize)
 {
     NSinkInterface *iface = NULL;
     iface = g_new0 (NSinkInterface, 1);
-    fail_unless (iface != NULL);
+    ck_assert (iface != NULL);
     const char *name = "TEST_RESYNC_sink_name";
     iface->name = name;
     NRequest *request = NULL;
     request = n_request_new ();
-    fail_unless (request != NULL);
+    ck_assert (request != NULL);
     const char *req_name = "TEST_RESYNC_REQUST_name";
     request->name = g_strdup (req_name);
     request->sinks_preparing = NULL;
     NCore *core = NULL;
     core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     iface->core = core;
     request->core = core;
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     n_request_set_properties (request, proplist);
     n_proplist_free (proplist);
     proplist = NULL;
 
     /* test for invelid parameter */
     n_sink_interface_resynchronize (NULL, request);
-    fail_unless (request->sinks_prepared == NULL);
+    ck_assert (request->sinks_prepared == NULL);
     /* test for invalid parameter */
     n_sink_interface_resynchronize (iface, NULL);
-    fail_unless (request->sinks_prepared == NULL);
+    ck_assert (request->sinks_prepared == NULL);
     /* sink (iface) is not master sink */
     n_sink_interface_resynchronize (iface, request);
-    fail_unless (request->sinks_prepared == NULL);
+    ck_assert (request->sinks_prepared == NULL);
 
     request->play_source_id = 100;
     request->master_sink = iface;
     /* play_source_id > 0 */
     n_sink_interface_resynchronize (iface, request);
-    fail_unless (request->sinks_prepared == NULL);
+    ck_assert (request->sinks_prepared == NULL);
     /* needs verification */
 
     request->sinks_playing = g_list_append (request->sinks_playing, iface);
     request->play_source_id = 0;
     /* sink_resync is NULL */
     n_sink_interface_resynchronize (iface, request);
-    fail_unless (request->sinks_playing == NULL);
-    fail_unless (request->sinks_prepared != NULL);
-    fail_unless (request->play_source_id == 1);
+    ck_assert (request->sinks_playing == NULL);
+    ck_assert (request->sinks_prepared != NULL);
+    ck_assert (request->play_source_id == 1);
 
     request->play_source_id = 0;
     NSinkInterface *sink_in_resync = g_new0 (NSinkInterface, 1);
-    fail_unless (sink_in_resync != NULL);
+    ck_assert (sink_in_resync != NULL);
     const char *sink_name = "TEST_RESYNC_sink_name";
     sink_in_resync->name = sink_name;
     static const NSinkInterfaceDecl decl = {
@@ -207,10 +207,10 @@ START_TEST (test_resynchronize)
      * */
 
     int *data = (int*) n_request_get_data (request, DATA_KEY);
-    fail_unless (data != NULL);
-    fail_unless (*data == 1);
-    fail_unless (request->sinks_resync == NULL);
-    fail_unless (g_list_find (request->sinks_preparing, sink_in_resync) != NULL);
+    ck_assert (data != NULL);
+    ck_assert (*data == 1);
+    ck_assert (request->sinks_resync == NULL);
+    ck_assert (g_list_find (request->sinks_preparing, sink_in_resync) != NULL);
 
     g_slice_free (int, data);
     data = NULL;
@@ -231,53 +231,53 @@ START_TEST (test_synchronize)
 {
     NSinkInterface *iface = NULL;
     iface = g_new0 (NSinkInterface, 1);
-    fail_unless (iface != NULL);
+    ck_assert (iface != NULL);
     const char *name = "TEST_SYNCHRONIZE_sink_name";
     iface->name = name;
     NRequest *request = NULL;
     request = n_request_new ();
-    fail_unless (request != NULL);
+    ck_assert (request != NULL);
     const char *req_name = "TEST_SYNCHRONIZE_REQUST_name";
     request->name = g_strdup (req_name);
     request->sinks_preparing = NULL;
     NCore *core = NULL;
     core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     iface->core = core;
     request->core = core;
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     n_request_set_properties (request, proplist);
     n_proplist_free (proplist);
     proplist = NULL;
 
     /* test for invalid parameter */
     n_sink_interface_synchronize (NULL, request);
-    fail_unless (request->sinks_prepared == NULL);
+    ck_assert (request->sinks_prepared == NULL);
     /* test for invalid parameter */
     n_sink_interface_synchronize (iface, NULL);
-    fail_unless (request->sinks_prepared == NULL);
+    ck_assert (request->sinks_prepared == NULL);
 
     /* request->sinks_preparing is NULL */
     n_sink_interface_synchronize (iface, request);
-    fail_unless (request->sinks_prepared == NULL);
+    ck_assert (request->sinks_prepared == NULL);
 
     NSinkInterface *iface_second = g_new0 (NSinkInterface, 1);
     /* add different sink (iface_second) to preparing list */
     request->sinks_preparing = g_list_append (request->sinks_preparing, iface_second);
     /* sink (iface_second) is already in preparing phase, but we call sync for iface */
     n_sink_interface_synchronize (iface, request);
-    fail_unless (g_list_length (request->sinks_preparing) == 1);
-    fail_unless (request->sinks_prepared == NULL);
+    ck_assert (g_list_length (request->sinks_preparing) == 1);
+    ck_assert (request->sinks_prepared == NULL);
 
     /* add proper sink to preparing list, at that point two items are in the preparing list */
     request->sinks_preparing = g_list_append (request->sinks_preparing, iface);
     n_sink_interface_synchronize (iface, request);
-    fail_unless (g_list_length (request->sinks_preparing) == 1);
-    fail_unless (request->sinks_prepared != NULL);
-    fail_unless (g_list_length (request->sinks_prepared) == 1);
-    fail_unless (g_list_find (request->sinks_prepared, iface) != NULL);
+    ck_assert (g_list_length (request->sinks_preparing) == 1);
+    ck_assert (request->sinks_prepared != NULL);
+    ck_assert (g_list_length (request->sinks_prepared) == 1);
+    ck_assert (g_list_find (request->sinks_prepared, iface) != NULL);
 
     g_free (iface_second);
     iface_second = NULL;
@@ -298,23 +298,23 @@ START_TEST (test_complete)
 {
     NSinkInterface *iface = NULL;
     iface = g_new0 (NSinkInterface, 1);
-    fail_unless (iface != NULL);
+    ck_assert (iface != NULL);
     const char *name = "TEST_COMPLETE_sink_name";
     iface->name = name;
     NRequest *request = NULL;
     request = n_request_new ();
-    fail_unless (request != NULL);
+    ck_assert (request != NULL);
     const char *req_name = "TEST_COMPLETE_REQUST_name";
     request->name = g_strdup (req_name);
     request->sinks_playing = NULL;
     NCore *core = NULL;
     core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     iface->core = core;
     request->core = core;
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     n_request_set_properties (request, proplist);
     n_proplist_free (proplist);
     proplist = NULL;
@@ -326,16 +326,16 @@ START_TEST (test_complete)
     request->sinks_playing = g_list_append (request->sinks_playing, iface);
     /* test for invalid parameters */
     n_sink_interface_complete (NULL, request);
-    fail_unless (request->sinks_playing != NULL);
-    fail_unless (g_list_length (request->sinks_playing) == 1);
+    ck_assert (request->sinks_playing != NULL);
+    ck_assert (g_list_length (request->sinks_playing) == 1);
     /* test for invalid parameters */
     n_sink_interface_complete (iface, NULL);
-    fail_unless (request->sinks_playing != NULL);
-    fail_unless (g_list_length (request->sinks_playing) == 1);
+    ck_assert (request->sinks_playing != NULL);
+    ck_assert (g_list_length (request->sinks_playing) == 1);
     
     n_sink_interface_complete (iface, request);
-    fail_unless (request->sinks_playing == NULL);
-    fail_unless (request->stop_source_id = 1);
+    ck_assert (request->sinks_playing == NULL);
+    ck_assert (request->stop_source_id = 1);
 
     n_core_free (core);
     core = NULL;
@@ -350,12 +350,12 @@ START_TEST (test_fail)
 {
     NSinkInterface *iface = NULL;
     iface = g_new0 (NSinkInterface, 1);
-    fail_unless (iface != NULL);
+    ck_assert (iface != NULL);
     const char *name = "TEST_FAIL_sink_name";
     iface->name = name;
     NRequest *request = NULL;
     request = n_request_new ();
-    fail_unless (request != NULL);
+    ck_assert (request != NULL);
     const char *req_name = "TEST_FAIL_REQUST_name";
     request->name = g_strdup (req_name);
     /* stop_source_id < 0 to go to the end of the function */
@@ -363,32 +363,32 @@ START_TEST (test_fail)
     request->has_failed = FALSE;
     NCore *core = NULL;
     core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     iface->core = core;
     request->core = core;
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
-    fail_unless (proplist != NULL);
+    ck_assert (proplist != NULL);
     n_request_set_properties (request, proplist);
     n_proplist_free (proplist);
     proplist = NULL;
     
     /* test for invalid parameters */
     n_sink_interface_fail (NULL, request);
-    fail_unless (request->has_failed == FALSE);
+    ck_assert (request->has_failed == FALSE);
     /* test for invalid parametes */
     n_sink_interface_fail (iface, NULL);
-    fail_unless (request->has_failed == FALSE);
+    ck_assert (request->has_failed == FALSE);
     
     /* proper test */
     n_sink_interface_fail (iface, request);
-    fail_unless (request->has_failed == TRUE);
-    fail_unless (request->stop_source_id == 1);
+    ck_assert (request->has_failed == TRUE);
+    ck_assert (request->stop_source_id == 1);
     
     request->stop_source_id = 100;
     request->has_failed = FALSE;
     n_sink_interface_fail (iface, request);
-    fail_unless (request->has_failed == FALSE);
+    ck_assert (request->has_failed == FALSE);
 
     n_core_free (core);
     core = NULL;

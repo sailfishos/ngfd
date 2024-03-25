@@ -7,19 +7,19 @@ START_TEST (test_value_create)
 {
     NValue *value = NULL;
     int type = n_value_type (value);
-    fail_unless (type == 0);
+    ck_assert (type == 0);
     value = n_value_new ();
-    fail_unless (value != NULL);
+    ck_assert (value != NULL);
 	
     /* set type to integer */
     n_value_set_int (value, 100);
     type = n_value_type (value);
-    fail_unless (type == N_VALUE_TYPE_INT);
+    ck_assert (type == N_VALUE_TYPE_INT);
 	
     /* set memory to 0 */
     n_value_init (value);
     type = n_value_type (value);
-    fail_unless (type == 0);
+    ck_assert (type == 0);
 
     n_value_free (value);
     value = NULL;
@@ -31,10 +31,10 @@ START_TEST (test_copy)
     NValue *val = NULL;
     NValue *copy = NULL;
     copy = n_value_copy (val);
-    fail_unless (copy == NULL);
+    ck_assert (copy == NULL);
     val = n_value_new ();
     copy = n_value_copy (val);
-    fail_unless (copy == NULL);
+    ck_assert (copy == NULL);
     gboolean result = FALSE;
     const char *str = "ngf";
 
@@ -42,7 +42,7 @@ START_TEST (test_copy)
     n_value_set_string (val, str);
     copy = n_value_copy (val);
     result = n_value_equals (val, copy);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
     n_value_free (copy);
     copy = NULL;
 
@@ -50,7 +50,7 @@ START_TEST (test_copy)
     n_value_set_int (val, -10);
     copy = n_value_copy (val);
     result = n_value_equals (val, copy);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
     n_value_free (copy);
     copy = NULL;
 
@@ -58,7 +58,7 @@ START_TEST (test_copy)
     n_value_set_uint (val, 10);
     copy = n_value_copy (val);
     result = n_value_equals (val, copy);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
     n_value_free (copy);
     copy = NULL;
 
@@ -66,7 +66,7 @@ START_TEST (test_copy)
     n_value_set_bool (val, TRUE);
     copy = n_value_copy (val);
     result = n_value_equals (val, copy);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
     n_value_free (copy);
     copy = NULL;
 
@@ -74,7 +74,7 @@ START_TEST (test_copy)
     n_value_set_pointer(val, val);
     copy = n_value_copy (val);
     result = n_value_equals (val, copy);
-    fail_unless (result == TRUE);	
+    ck_assert (result == TRUE);
 	
     n_value_free (val);
     val = NULL;
@@ -91,7 +91,7 @@ START_TEST (test_equals)
 
     /* both are NULL */
     result = n_value_equals (valA, valB);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
 
     valA = n_value_new ();
     valB = n_value_new ();
@@ -102,41 +102,41 @@ START_TEST (test_equals)
     n_value_set_uint (valB, 10);
     /* types differ */
     result = n_value_equals (valA, valB);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
 	
     /* string types */
     n_value_set_string (valB, str);
     result = n_value_equals (valA, valB);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
 
     /* int types */
     n_value_set_int (valA, -10);
     n_value_set_int (valB, -10);
     result = n_value_equals (valA, valB);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
 
     /* uint types */
     n_value_set_uint (valA, 10);
     n_value_set_uint (valB, 10);
     result = n_value_equals (valA, valB);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
 
     /* boolean types */
     n_value_set_bool (valA, TRUE);
     n_value_set_bool (valB, TRUE);
     result = n_value_equals (valA, valB);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
 
     /* pointer types */
     n_value_set_pointer (valA, valA);
     n_value_set_pointer (valB, valA);
     result = n_value_equals (valA, valB);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
 
     /* different poiter */
     n_value_set_pointer (valB, valB);
     result = n_value_equals (valA, valB);
-    fail_unless (result == FALSE);
+    ck_assert (result == FALSE);
 
     n_value_free (valA);
     valA = NULL;
@@ -149,14 +149,14 @@ START_TEST (test_string)
 {
     NValue *value = NULL;
     value = n_value_new ();
-    fail_unless (value != NULL);
-    fail_unless (n_value_get_string (value) == NULL);
+    ck_assert (value != NULL);
+    ck_assert (n_value_get_string (value) == NULL);
     const char *str_val = "NGF\0";
     n_value_set_string (value, str_val);
     const char *reply = n_value_get_string (value);
-    fail_unless (reply != str_val);
+    ck_assert (reply != str_val);
     char *duplicate = n_value_dup_string (value);
-    fail_unless (strcmp (duplicate, str_val) == 0);
+    ck_assert (strcmp (duplicate, str_val) == 0);
 	
     g_free (duplicate);
     duplicate = NULL;
@@ -169,12 +169,12 @@ START_TEST (test_int)
 {
     NValue *value = NULL;
     value = n_value_new ();
-    fail_unless (value != NULL);
-    fail_unless (n_value_get_string (value) == 0);
+    ck_assert (value != NULL);
+    ck_assert (n_value_get_string (value) == 0);
     int val = -100;
     n_value_set_int (value, val);
     int reply = n_value_get_int (value);
-    fail_unless (reply == val);
+    ck_assert (reply == val);
 
     n_value_free (value);
     value = NULL;
@@ -185,12 +185,12 @@ START_TEST (test_uint)
 {
     NValue *value = NULL;
     value = n_value_new ();
-    fail_unless (value != NULL);
-    fail_unless (n_value_get_uint (value) == 0);
+    ck_assert (value != NULL);
+    ck_assert (n_value_get_uint (value) == 0);
     uint val = 100;
     n_value_set_uint (value, val);
     uint reply = n_value_get_uint (value);
-    fail_unless (reply == val);
+    ck_assert (reply == val);
 
     n_value_free (value);
     value = NULL;
@@ -201,12 +201,12 @@ START_TEST (test_bool)
 {
     NValue *value = NULL;
     value = n_value_new ();
-    fail_unless (value != NULL);
-    fail_unless (n_value_get_bool (value) == FALSE);
+    ck_assert (value != NULL);
+    ck_assert (n_value_get_bool (value) == FALSE);
     gboolean val = TRUE;
     n_value_set_bool (value, val);
     gboolean reply = n_value_get_bool (value);
-    fail_unless (reply == val);
+    ck_assert (reply == val);
 
     n_value_free (value);
     value = NULL;
@@ -217,12 +217,12 @@ START_TEST (test_pointer)
 {
     NValue *value = NULL;
     value = n_value_new ();
-    fail_unless (value != NULL);
-    fail_unless (n_value_get_pointer (value) == NULL);
+    ck_assert (value != NULL);
+    ck_assert (n_value_get_pointer (value) == NULL);
     gpointer val = (gpointer)value;
     n_value_set_pointer (value, val);
     gpointer reply = n_value_get_pointer (value);
-    fail_unless (reply == val);
+    ck_assert (reply == val);
 
     n_value_free (value);
     value = NULL;
@@ -233,7 +233,7 @@ START_TEST (test_to_string)
 {
     NValue *value = NULL;
     value = n_value_new ();
-    fail_unless (value != NULL);
+    ck_assert (value != NULL);
     const char *str = "NGF";
     const int i = -100;
     const uint ui = 10;
@@ -242,42 +242,42 @@ START_TEST (test_to_string)
     char *expected = "<unknown value>";
 
     char *string = n_value_to_string (value);
-    fail_unless (strcmp (string, expected) == 0);
+    ck_assert (strcmp (string, expected) == 0);
     g_free (string);
     string = NULL;
 	
     n_value_set_string (value, str);
     string = n_value_to_string (value);
     expected = "NGF (string)";
-    fail_unless (strcmp (string, expected) == 0);
+    ck_assert (strcmp (string, expected) == 0);
     g_free (string);
     string = NULL;
 
     n_value_set_int (value, i);
     string = n_value_to_string (value);
     expected = "-100 (int)";
-    fail_unless (strcmp (string, expected) == 0);
+    ck_assert (strcmp (string, expected) == 0);
     g_free (string);
     string = NULL;
 
     n_value_set_uint (value, ui);
     string = n_value_to_string (value);
     expected = "10 (uint)";
-    fail_unless (strcmp (string, expected) == 0);
+    ck_assert (strcmp (string, expected) == 0);
     g_free (string);
     string = NULL;
 
     n_value_set_bool (value, logic);
     string = n_value_to_string (value);
     expected = "TRUE (bool)";
-    fail_unless (strcmp (string, expected) == 0);
+    ck_assert (strcmp (string, expected) == 0);
     g_free (string);
     string = NULL;
 
     n_value_set_pointer (value, point);
     string = n_value_to_string (value);
     expected = g_strdup_printf ("0x%p (pointer)", point);
-    fail_unless (g_strcmp0 (string, expected) == 0);
+    ck_assert (g_strcmp0 (string, expected) == 0);
     g_free (string);
     g_free (expected);
     string = NULL;

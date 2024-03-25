@@ -10,17 +10,17 @@ START_TEST (test_get_core)
 {
     NPlugin *plugin = NULL;
     /* NULL checking */
-    fail_unless (n_plugin_get_core (plugin) == NULL);
+    ck_assert (n_plugin_get_core (plugin) == NULL);
     plugin = g_new0 (NPlugin, 1);
-    fail_unless (plugin != NULL);
+    ck_assert (plugin != NULL);
 
     NCore *core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     core->conf_path = g_strdup ("conf_path");
     plugin->core = core;
     NCore *receivedCore = n_plugin_get_core (plugin);
-    fail_unless (receivedCore != NULL);
-    fail_unless (g_strcmp0 (receivedCore->conf_path, core->conf_path) == 0);
+    ck_assert (receivedCore != NULL);
+    ck_assert (g_strcmp0 (receivedCore->conf_path, core->conf_path) == 0);
 
     g_free (plugin);
     plugin = NULL;
@@ -31,9 +31,9 @@ START_TEST (test_get_params)
 {
     NPlugin *plugin = NULL;
     /* NULL checking */
-    fail_unless (n_plugin_get_params (plugin) == NULL);
+    ck_assert (n_plugin_get_params (plugin) == NULL);
     plugin = g_new0 (NPlugin, 1);
-    fail_unless (plugin != NULL);
+    ck_assert (plugin != NULL);
 
     NProplist *proplist = NULL;
     proplist = n_proplist_new ();
@@ -42,8 +42,8 @@ START_TEST (test_get_params)
     const char *key1 = "key1";
     n_proplist_set_int (proplist, key1, -100);
     receivedParams = n_plugin_get_params (plugin);
-    fail_unless (receivedParams != NULL);
-    fail_unless (n_proplist_match_exact (receivedParams, proplist) == TRUE);
+    ck_assert (receivedParams != NULL);
+    ck_assert (n_proplist_match_exact (receivedParams, proplist) == TRUE);
     
     n_proplist_free (proplist);
     proplist = NULL;
@@ -76,34 +76,34 @@ START_TEST (test_register_sink)
     };
     NPlugin *plugin = NULL;
     plugin = g_new0 (NPlugin, 1);
-    fail_unless (plugin != NULL);
+    ck_assert (plugin != NULL);
     NCore *core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     plugin->core = core;
     int size = -1;
     
     n_plugin_register_sink (NULL, &decl);
     size = core->num_sinks;
-    fail_unless (size == 0);
+    ck_assert (size == 0);
     n_plugin_register_sink (plugin, NULL);
     size = core->num_sinks;
-    fail_unless (size == 0);
+    ck_assert (size == 0);
     
     /* tests for core -> get sink */
-    fail_unless (n_core_get_sinks (NULL) == NULL);
-    fail_unless (n_core_get_sinks (core) == NULL);
+    ck_assert (n_core_get_sinks (NULL) == NULL);
+    ck_assert (n_core_get_sinks (core) == NULL);
     
     /* register sink */
     n_plugin_register_sink (plugin, &decl);
     size = core->num_sinks;
-    fail_unless (size == 1);
+    ck_assert (size == 1);
 
     /* tests for core -> get sink */
     NSinkInterface **ifacev = NULL;
     ifacev = n_core_get_sinks (core);
-    fail_unless (ifacev != NULL);
+    ck_assert (ifacev != NULL);
     NSinkInterface *iface = ifacev[0];
-    fail_unless (g_strcmp0 (iface->name, decl.name) == 0);
+    ck_assert (g_strcmp0 (iface->name, decl.name) == 0);
 
     n_core_free (core);
     core = NULL;
@@ -123,23 +123,23 @@ START_TEST (test_register_input)
     };
     NPlugin *plugin = NULL;
     plugin = g_new0 (NPlugin, 1);
-    fail_unless (plugin != NULL);
+    ck_assert (plugin != NULL);
     NCore *core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
     plugin->core = core;
     int size = -1;
     
     n_plugin_register_input (NULL, &decl);
     size = core->num_inputs;
-    fail_unless (size == 0);
+    ck_assert (size == 0);
     n_plugin_register_input (plugin, NULL);
     size = core->num_inputs;
-    fail_unless (size == 0);
+    ck_assert (size == 0);
     
     /* register input */
     n_plugin_register_input (plugin, &decl);
     size = core->num_inputs;
-    fail_unless (size == 1);
+    ck_assert (size == 1);
     
     n_core_free (core);
     core = NULL;
@@ -151,7 +151,7 @@ END_TEST
 START_TEST (test_load_plugin)
 {
     NCore *core = n_core_new (NULL, NULL);
-    fail_unless (core != NULL);
+    ck_assert (core != NULL);
 
     /* allow execution inside build tree */
     const char *build_tree_plugin_path = "./libngfd_test_fake.la";
@@ -165,35 +165,35 @@ START_TEST (test_load_plugin)
     NPlugin *loaded_plugin = NULL;
     /* try to load not existing plugin file */
     loaded_plugin = n_plugin_open ("./not_existing_plugin.la");
-    fail_unless (loaded_plugin == NULL);
+    ck_assert (loaded_plugin == NULL);
     /* load dummyu plugin file - valid one*/
     loaded_plugin = n_plugin_open (plugin_path);
-    fail_unless (loaded_plugin != NULL);
-    fail_unless (loaded_plugin->module != NULL);
+    ck_assert (loaded_plugin != NULL);
+    ck_assert (loaded_plugin->module != NULL);
     loaded_plugin->core = core;
     loaded_plugin->params = n_proplist_new ();
 
     /* load actual plugin */
     int result = loaded_plugin->load (loaded_plugin);
-    fail_unless (result == TRUE);
+    ck_assert (result == TRUE);
 
     const char *name = "test-fake";
-    fail_unless (g_strcmp0 (name, loaded_plugin->get_name ()) == 0);
+    ck_assert (g_strcmp0 (name, loaded_plugin->get_name ()) == 0);
     const char *desc = "Fake plugin for unit test purposes";
-    fail_unless (g_strcmp0 (desc, loaded_plugin->get_desc ()) == 0);
+    ck_assert (g_strcmp0 (desc, loaded_plugin->get_desc ()) == 0);
     const char *version = "0.1";
-    fail_unless (g_strcmp0 (version, loaded_plugin->get_version ()) == 0);
+    ck_assert (g_strcmp0 (version, loaded_plugin->get_version ()) == 0);
 
     int size = -1;
     size = core->num_sinks;
-    fail_unless (size == 1);
+    ck_assert (size == 1);
 
     /* tests for core -> get sink */
     NSinkInterface **ifacev = NULL;
     ifacev = n_core_get_sinks (core);
-    fail_unless (ifacev != NULL);
+    ck_assert (ifacev != NULL);
     NSinkInterface *iface = ifacev[0];
-    fail_unless (g_strcmp0 (iface->name, "fake") == 0);
+    ck_assert (g_strcmp0 (iface->name, "fake") == 0);
 
     /* call unload for specific plugin */
     loaded_plugin->unload (loaded_plugin);
