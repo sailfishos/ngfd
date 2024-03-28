@@ -386,12 +386,14 @@ START_TEST (test_set_get_unset)
     NValue *result = NULL;
     const char *key = "key";
     
-    n_proplist_set (NULL, key, value);
+    // these should fail to set
+    n_proplist_set (NULL, key, n_value_copy (value));
     ck_assert (n_proplist_is_empty (proplist) == TRUE);
-    n_proplist_set (proplist, NULL, value);
+    n_proplist_set (proplist, NULL, n_value_copy (value));
     ck_assert (n_proplist_is_empty (proplist) == TRUE);
     n_proplist_set (proplist, key, NULL);
     ck_assert (n_proplist_is_empty (proplist) == TRUE);
+    // this should succeed
     n_proplist_set (proplist, key, value);
     ck_assert (n_proplist_size (proplist) == 1);
 

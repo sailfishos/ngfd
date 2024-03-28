@@ -21,9 +21,9 @@ START_TEST (test_set_get_value)
     ck_assert (n_context_get_value (NULL, key) == NULL);
 
     /* sets value sith some NULL arguments */
-    n_context_set_value (NULL, key, value);
+    n_context_set_value (NULL, key, n_value_copy (value));
     ck_assert (n_context_get_value (context, key) == NULL);
-    n_context_set_value (context, NULL, value);
+    n_context_set_value (context, NULL, n_value_copy (value));
     ck_assert (n_context_get_value (context, key) == NULL);
 
     /* calls set value with valid arguments */

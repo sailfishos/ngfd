@@ -204,12 +204,14 @@ n_proplist_unset (NProplist *proplist, const char *key)
 }
 
 void
-n_proplist_set (NProplist *proplist, const char *key, const NValue *value)
+n_proplist_set (NProplist *proplist, const char *key, NValue *value)
 {
-    if (!proplist || !key || !value)
+    if (!proplist || !key || !value) {
+        n_value_free (value);
         return;
+    }
 
-    g_hash_table_replace (proplist->values, g_strdup (key), (gpointer) value);
+    g_hash_table_replace (proplist->values, g_strdup (key), value);
 }
 
 NValue*
