@@ -108,7 +108,7 @@ gboolean    n_proplist_match_exact (const NProplist *a, const NProplist *b);
  * @param key Key
  * @param value Value. Proplist takes ownership of the value.
  */
-void        n_proplist_set         (NProplist *proplist, const char *key, const NValue *value);
+void        n_proplist_set         (NProplist *proplist, const char *key, NValue *value);
 
 /** Get value from proplist
  * @param proplist Proplist

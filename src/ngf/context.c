@@ -86,8 +86,10 @@ n_context_set_value (NContext *context, const char *key,
 {
     NValue *old_value = NULL;
 
-    if (!context || !key)
+    if (!context || !key) {
+        n_value_free (value);
         return;
+    }
 
     old_value = n_value_copy (n_proplist_get (context->values, key));
     n_proplist_set (context->values, key, value);
