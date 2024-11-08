@@ -36,6 +36,7 @@
 int ffmemless_play(int effect_id, int device_file, int play)
 {
 	struct input_event event;
+	memset(&event, 0, sizeof(event));
 
 	event.type = EV_FF;
 	event.code = effect_id;
