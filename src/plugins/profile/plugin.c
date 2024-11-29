@@ -612,10 +612,10 @@ N_PLUGIN_LOAD (plugin)
     profile_track_add_change_cb  (value_changed_cb, core, NULL);
     profile_track_add_profile_cb (profile_changed_cb, core, NULL);
 
-    profile_tracker_init ();
-
     if (!setup_session_bus_connection (core))
         return FALSE;
+
+    profile_tracker_init ();
 
     return TRUE;
 }
