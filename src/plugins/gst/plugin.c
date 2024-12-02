@@ -951,7 +951,8 @@ update_fade_effect (FadeEffect *effect, gdouble elapsed, gdouble volume)
 }
 
 static gboolean
-gst_sink_synchronize_cb (gpointer userdata) {
+gst_sink_synchronize_cb (gpointer userdata)
+{
     StreamData *stream = userdata;
 
     /* If our pipeline is not yet ready to be played (not yet in state GST_STATE_PAUSED
@@ -966,7 +967,8 @@ gst_sink_synchronize_cb (gpointer userdata) {
 }
 
 static gboolean
-gst_sink_fake_play_complete_cb (gpointer userdata) {
+gst_sink_fake_play_complete_cb (gpointer userdata)
+{
     StreamData *stream = userdata;
 
     stream->fake_play_source = 0;
@@ -1173,7 +1175,8 @@ cleanup (StreamData *stream)
 }
 
 static void
-stream_stop (StreamData *stream) {
+stream_stop (StreamData *stream)
+{
     N_DEBUG (LOG_CAT "stop");
 
     stream_clear_delays (stream);
@@ -1189,7 +1192,8 @@ stream_stop (StreamData *stream) {
 }
 
 static void
-gst_sink_stop_all_cb (gpointer userdata) {
+gst_sink_stop_all_cb (gpointer userdata)
+{
     StreamData *stream = userdata;
 
     stream_clear_delays (stream);

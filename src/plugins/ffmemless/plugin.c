@@ -104,6 +104,7 @@ static int ffm_setup_device(const NProplist *props, int *dev_fd)
 		return 0;
 	}
 }
+
 static void ffm_close_device(int fd)
 {
 	ffmemless_evdev_file_close(fd);
@@ -266,7 +267,7 @@ static int ffm_setup_default_effect(GHashTable *effects, int dev_fd)
 	// drivers which use FF_PERIODIC only with FF_CUSTOM waveform..
 	// https://github.com/torvalds/linux/blob/master/drivers/input/ff-core.c#L350
 	if (ffmemless_has_feature(FF_CONSTANT, ffm.features)) {
-		N_DEBUG (LOG_CAT "Using constant default effect, rumble is %d", 
+		N_DEBUG (LOG_CAT "Using constant default effect, rumble is %d",
 			(ffmemless_has_feature(FF_RUMBLE, ffm.features)));
 		ff.type = FF_CONSTANT;
 		ff.replay.length = NGF_DEFAULT_DURATION;
@@ -303,7 +304,7 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 	struct ffm_effect_data *data;
 	GHashTableIter iter;
 
-	if(!effects || !props) {
+	if (!effects || !props) {
 		N_WARNING (LOG_CAT "ffm_setup_effects: invalid parameters");
 		return -1;
 	}
@@ -344,7 +345,7 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 		}
 
 		if (data->id != -1) {
-			if(ffmemless_erase_effect(data->id, ffm.dev_file)) {
+			if (ffmemless_erase_effect(data->id, ffm.dev_file)) {
 				N_WARNING (LOG_CAT "Failed to remove id %d",
 								data->id);
 				continue;
@@ -538,6 +539,7 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 	}
 
 	return 0;
+
 ffm_eff_error1:
 	g_hash_table_destroy(ffm.effects);
 	return -1;
@@ -589,7 +591,7 @@ static int ffm_play(struct ffm_effect_data *data, int play)
 					data->poll_id = 0;
 				}
 				return FALSE;
-			} 
+			}
 		}
 
 		if (ffmemless_play(data->cached_effect.id, ffm.dev_file, play))
@@ -701,6 +703,7 @@ static int ffm_sink_prepare(NSinkInterface *iface, NRequest *request)
 
 	return TRUE;
 }
+
 static int ffm_sink_play(NSinkInterface *iface, NRequest *request)
 {
 	struct ffm_effect_data *data;
@@ -712,10 +715,11 @@ static int ffm_sink_play(NSinkInterface *iface, NRequest *request)
 
 	N_DEBUG (LOG_CAT "play id %d, repeat %d times, iface 0x%x, "
 			 "req 0x%x data 0x%x", data->id, data->repeat,
-			data->iface, data->request, data);
+			 data->iface, data->request, data);
 
 	return ffm_play(data, data->repeat);
 }
+
 static int ffm_sink_pause(NSinkInterface *iface, NRequest *request)
 {
 	struct ffm_effect_data *data;
@@ -733,6 +737,7 @@ static int ffm_sink_pause(NSinkInterface *iface, NRequest *request)
 	/* no pause possible for vibra effects, just stop */
 	return ffm_play(data, 0);
 }
+
 static void ffm_sink_stop(NSinkInterface *iface, NRequest *request)
 {
 	struct ffm_effect_data *data;

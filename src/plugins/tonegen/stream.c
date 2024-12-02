@@ -251,7 +251,7 @@ void stream_destroy(struct stream *stream)
 #endif
 
 
-    for (prev=(struct stream *)&ausrv->streams;  prev->next;  prev=prev->next){
+    for (prev=(struct stream *)&ausrv->streams;  prev->next;  prev=prev->next) {
         if (prev->next == stream) {
             pastr = stream->pastr;
             battr = pa_stream_get_buffer_attr(pastr);

@@ -126,6 +126,7 @@ int ffmemless_evdev_file_close(int file)
 	return close(file);
 }
 
-int ffmemless_has_feature(__u16 type, unsigned long features[4]) {
+int ffmemless_has_feature(__u16 type, unsigned long features[4])
+{
 	return test_bit(type, features);
 }
