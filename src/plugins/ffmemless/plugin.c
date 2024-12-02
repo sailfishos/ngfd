@@ -572,7 +572,9 @@ static int ffm_play(struct ffm_effect_data *data, int play)
 		}
 		N_DEBUG (LOG_CAT "Starting playback %d", data->id);
 	} else {
-		ffm_playback_done(data);
+		if (ffm.cache_effects) {
+			ffmemless_erase_effect(data->cached_effect.id, ffm.dev_file);
+		}
 		N_DEBUG (LOG_CAT "Stopping playback %d", data->id);
 	}
 
