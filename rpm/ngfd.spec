@@ -78,12 +78,10 @@ This package contains test suite for ngfd.
 
 %build
 %autogen --enable-debug
-make %{?_smp_mflags}
+%make_build
 
 %install
-rm -rf %{buildroot}
 %make_install
-rm -f %{buildroot}/%{_libdir}/ngf/*.la
 
 install -D -m 644 %{SOURCE1} %{buildroot}%{_userunitdir}/ngfd.service
 mkdir -p %{buildroot}%{_userunitdir}/user-session.target.wants
@@ -92,7 +90,6 @@ mkdir -p %{buildroot}%{_userunitdir}/actdead-session.target.wants
 ln -s ../ngfd.service %{buildroot}%{_userunitdir}/actdead-session.target.wants/
 
 %files
-%defattr(-,root,root,-)
 %license COPYING
 %config %{_sysconfdir}/dbus-1/system.d/%{name}.conf
 %{_bindir}/%{name}
@@ -116,23 +113,18 @@ ln -s ../ngfd.service %{buildroot}%{_userunitdir}/actdead-session.target.wants/
 %{_userunitdir}/actdead-session.target.wants/ngfd.service
 
 %files plugin-devel
-%defattr(-,root,root,-)
 %{_includedir}/ngf
 %{_libdir}/pkgconfig/ngf-plugin.pc
 
 %files plugin-fake
-%defattr(-,root,root,-)
 %{_libdir}/ngf/libngfd_fake.so
 %{_libdir}/ngf/libngfd_test_fake.so
 
 %files settings-basic
-%defattr(-,root,root,-)
 %{_datadir}/ngfd/
 
 %files plugin-doc
-%defattr(-,root,root,-)
 %{_docdir}/ngfd-plugin/html
 
 %files tests
-%defattr(-,root,root,-)
 /opt/tests/ngfd

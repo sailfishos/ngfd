@@ -104,6 +104,7 @@ static int ffm_setup_device(const NProplist *props, int *dev_fd)
 		return 0;
 	}
 }
+
 static void ffm_close_device(int fd)
 {
 	ffmemless_evdev_file_close(fd);
@@ -205,14 +206,14 @@ done:
  */
 static GHashTable *ffm_new_effect_list(const char *effect_data)
 {
-	GHashTable *list = NULL;
 	gchar **effect_names;
 	int i = 0;
 	struct ffm_effect_data *data;
+	GHashTable *list = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
 	if (!effect_data) {
 		N_WARNING (LOG_CAT "NULL effect_data pointer");
-		return NULL;
+		return list;
 	}
 
 	N_DEBUG (LOG_CAT "creating effect list for %s", effect_data);
@@ -222,9 +223,6 @@ static GHashTable *ffm_new_effect_list(const char *effect_data)
 		N_WARNING (LOG_CAT "Empty effect_data string");
 		goto ffm_effect_list_done;
 	}
-
-	list = g_hash_table_new_full(g_str_hash,  g_str_equal,
-					g_free, g_free);
 
 	for (i = 0; effect_names[i] != NULL; i++) {
 		/* Add effect key to effect list with initial data */
@@ -266,7 +264,7 @@ static int ffm_setup_default_effect(GHashTable *effects, int dev_fd)
 	// drivers which use FF_PERIODIC only with FF_CUSTOM waveform..
 	// https://github.com/torvalds/linux/blob/master/drivers/input/ff-core.c#L350
 	if (ffmemless_has_feature(FF_CONSTANT, ffm.features)) {
-		N_DEBUG (LOG_CAT "Using constant default effect, rumble is %d", 
+		N_DEBUG (LOG_CAT "Using constant default effect, rumble is %d",
 			(ffmemless_has_feature(FF_RUMBLE, ffm.features)));
 		ff.type = FF_CONSTANT;
 		ff.replay.length = NGF_DEFAULT_DURATION;
@@ -303,7 +301,7 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 	struct ffm_effect_data *data;
 	GHashTableIter iter;
 
-	if(!effects || !props) {
+	if (!effects || !props) {
 		N_WARNING (LOG_CAT "ffm_setup_effects: invalid parameters");
 		return -1;
 	}
@@ -320,6 +318,8 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 							(gpointer) &data)) {
 		memset(&ff, 0, sizeof(struct ff_effect));
 		int16_t custom_data[CUSTOM_DATA_LEN] = {0, 0, 0};
+		int custom_data_applied = FALSE;
+
 		N_DEBUG (LOG_CAT "got key %s, id %d", key, data->id);
 
 		value = ffm_get_str_value(props, key, "_TYPE");
@@ -344,7 +344,7 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 		}
 
 		if (data->id != -1) {
-			if(ffmemless_erase_effect(data->id, ffm.dev_file)) {
+			if (ffmemless_erase_effect(data->id, ffm.dev_file)) {
 				N_WARNING (LOG_CAT "Failed to remove id %d",
 								data->id);
 				continue;
@@ -437,6 +437,7 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 				custom_data[0] = data->customEffectId;
 				ff.u.periodic.custom_data = custom_data;
 				ff.u.periodic.custom_len = CUSTOM_DATA_LEN;
+				custom_data_applied = TRUE;
 			}
 
 			ff.u.periodic.period = ffm_get_int_value(props,
@@ -484,6 +485,7 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 							key);
 			goto ffm_eff_error1;
 		}
+
 		/* If the id was -1, kernel has updated it with valid value */
 		data->id = ff.id;
 		/* Calculate the playback time */
@@ -498,6 +500,11 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 		}
 
 		if (ffm.cache_effects) {
+			// custom data is not needed after upload and would point anyway to stack
+			if (custom_data_applied) {
+				ff.u.periodic.custom_data = NULL;
+				ff.u.periodic.custom_len = 0;
+			}
 			memcpy(&data->cached_effect, &ff, sizeof(ff));
 		}
 
@@ -538,8 +545,8 @@ static int ffm_setup_effects(const NProplist *props, GHashTable *effects)
 	}
 
 	return 0;
+
 ffm_eff_error1:
-	g_hash_table_destroy(ffm.effects);
 	return -1;
 }
 
@@ -570,26 +577,41 @@ static int ffm_play(struct ffm_effect_data *data, int play)
 		}
 		N_DEBUG (LOG_CAT "Starting playback %d", data->id);
 	} else {
-		ffm_playback_done(data);
+		if (ffm.cache_effects) {
+			ffmemless_erase_effect(data->cached_effect.id, ffm.dev_file);
+		}
 		N_DEBUG (LOG_CAT "Stopping playback %d", data->id);
 	}
 
 	if (ffm.cache_effects) {
 		int16_t custom_data[CUSTOM_DATA_LEN] = {0, 0, 0};
+		int custom_data_applied = FALSE;
+
 		if (play) {
 			data->cached_effect.id = -1;
 			if (data->cached_effect.type == FF_PERIODIC) {
 				custom_data[0] = data->customEffectId;
+				custom_data_applied = TRUE;
 				data->cached_effect.u.periodic.custom_data = custom_data;
+				data->cached_effect.u.periodic.custom_len = CUSTOM_DATA_LEN;
 			}
 			if (ffmemless_upload_effect(&data->cached_effect, ffm.dev_file)) {
+				if (custom_data_applied) {
+					data->cached_effect.u.periodic.custom_data = NULL;
+					data->cached_effect.u.periodic.custom_len = 0;
+				}
 				N_DEBUG (LOG_CAT "%d effect re-load failed", data->id);
 				if (data->poll_id) {
 					g_source_remove (data->poll_id);
 					data->poll_id = 0;
 				}
 				return FALSE;
-			} 
+			}
+			// custom data in stack, needed only for upload
+			if (custom_data_applied) {
+				data->cached_effect.u.periodic.custom_data = NULL;
+				data->cached_effect.u.periodic.custom_len = 0;
+			}
 		}
 
 		if (ffmemless_play(data->cached_effect.id, ffm.dev_file, play))
@@ -605,7 +627,10 @@ static int ffm_play(struct ffm_effect_data *data, int play)
 static void ffm_sink_shutdown(NSinkInterface *iface)
 {
 	(void) iface;
-	g_hash_table_destroy(ffm.effects);
+	if (ffm.effects) {
+		g_hash_table_destroy(ffm.effects);
+		ffm.effects = NULL;
+	}
 	ffm_close_device(ffm.dev_file);
 }
 
@@ -701,6 +726,7 @@ static int ffm_sink_prepare(NSinkInterface *iface, NRequest *request)
 
 	return TRUE;
 }
+
 static int ffm_sink_play(NSinkInterface *iface, NRequest *request)
 {
 	struct ffm_effect_data *data;
@@ -712,10 +738,11 @@ static int ffm_sink_play(NSinkInterface *iface, NRequest *request)
 
 	N_DEBUG (LOG_CAT "play id %d, repeat %d times, iface 0x%x, "
 			 "req 0x%x data 0x%x", data->id, data->repeat,
-			data->iface, data->request, data);
+			 data->iface, data->request, data);
 
 	return ffm_play(data, data->repeat);
 }
+
 static int ffm_sink_pause(NSinkInterface *iface, NRequest *request)
 {
 	struct ffm_effect_data *data;
@@ -733,6 +760,7 @@ static int ffm_sink_pause(NSinkInterface *iface, NRequest *request)
 	/* no pause possible for vibra effects, just stop */
 	return ffm_play(data, 0);
 }
+
 static void ffm_sink_stop(NSinkInterface *iface, NRequest *request)
 {
 	struct ffm_effect_data *data;
