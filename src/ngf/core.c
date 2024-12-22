@@ -794,14 +794,31 @@ n_core_parse_configuration (NCore *core)
     gchar     *filename   = NULL;
     gchar    **plugins    = NULL;
 
-    filename = g_build_filename (core->conf_path, DEFAULT_CONF_FILENAME, NULL);
-    keyfile  = g_key_file_new ();
+    const char *conf_paths[] = { core->user_conf_path, core->conf_path, NULL };
+    const char **conf_path = conf_paths;
 
-    if (!g_key_file_load_from_file (keyfile, filename, G_KEY_FILE_NONE, &error)) {
-        N_WARNING (LOG_CAT "failed to load configuration file file: %s", error->message);
-        g_error_free    (error);
-        g_key_file_free (keyfile);
-        g_free          (filename);
+    while (*conf_path) {
+        if (error) {
+            g_error_free (error);
+            error = NULL;
+        }
+        filename = g_build_filename (*conf_path, DEFAULT_CONF_FILENAME, NULL);
+        keyfile  = g_key_file_new ();
+
+        /* Try to load conf file */
+        if (!g_key_file_load_from_file (keyfile, filename, G_KEY_FILE_NONE, &error)) {
+            g_key_file_free (keyfile);
+            g_free          (filename);
+        } else {
+            break;
+        }
+        ++conf_path;
+    }
+
+    /* Return loading configuration fails */
+    if (error) {
+        N_WARNING (LOG_CAT "failed to load any configuration file: %s", error->message);
+        g_error_free (error);
         return FALSE;
     }
 
