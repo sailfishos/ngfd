@@ -794,15 +794,27 @@ n_core_parse_configuration (NCore *core)
     gchar     *filename   = NULL;
     gchar    **plugins    = NULL;
 
-    filename = g_build_filename (core->conf_path, DEFAULT_CONF_FILENAME, NULL);
+    filename = g_build_filename (core->user_conf_path, DEFAULT_CONF_FILENAME, NULL);
     keyfile  = g_key_file_new ();
 
+    /* Try user conf file first */
     if (!g_key_file_load_from_file (keyfile, filename, G_KEY_FILE_NONE, &error)) {
-        N_WARNING (LOG_CAT "failed to load configuration file file: %s", error->message);
         g_error_free    (error);
         g_key_file_free (keyfile);
         g_free          (filename);
-        return FALSE;
+        error = NULL;
+
+        filename = g_build_filename (core->conf_path, DEFAULT_CONF_FILENAME, NULL);
+        keyfile  = g_key_file_new ();
+
+        /* Try default conf file if user conf fails */
+        if (!g_key_file_load_from_file (keyfile, filename, G_KEY_FILE_NONE, &error)) {
+            N_WARNING (LOG_CAT "failed to load configuration file file: %s", error->message);
+            g_error_free    (error);
+            g_key_file_free (keyfile);
+            g_free          (filename);
+            return FALSE;
+        }
     }
 
     N_DEBUG (LOG_CAT "parsing configuration file '%s'", filename);
