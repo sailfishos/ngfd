@@ -434,11 +434,10 @@ match_event_rule_cb (gpointer data, gpointer userdata)
     if (n_log_get_level() <= N_LOG_LEVEL_DEBUG) {
         gchar      *value_str       = NULL;
         gchar      *match_value_str = NULL;
-        const char *op_str          = "";
+        const char *op_str          = n_event_rule_op_string (rule);
 
         if (rule->op != N_EVENT_RULE_ALWAYS)
             value_str = n_value_to_string (rule->value);
-        op_str = n_event_rule_op_string (rule);
         match_value_str = n_value_to_string (match_value);
 
         N_DEBUG (LOG_CAT "-> %s'%s': '%s' %s '%s' -> %s",

@@ -41,7 +41,7 @@ static inline union envelop *ramp_create(int type, uint32_t length,
     struct envelop_ramp_def *up;
     struct envelop_ramp_def *down;
 
-    if ((envelop = malloc(sizeof(struct envelop_ramp))) != NULL) {
+    if ((envelop = malloc(sizeof(union envelop))) != NULL) {
         ramp   = &envelop->ramp;
         up     = &ramp->up;
         down   = &ramp->down;

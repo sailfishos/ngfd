@@ -343,14 +343,14 @@ init_done_cb (NHook *hook, void *data, void *userdata)
 
         value = n_context_get_value (context, key);
         if (!value) {
-            N_DEBUG (LOG_CAT "no value found for role '%s', key '%s' from context",
-                             entry->role, key);
+            N_DEBUG (LOG_CAT "no value found for key '%s' from context",
+                             key);
             continue;
         }
 
         if (n_value_type (value) != N_VALUE_TYPE_INT) {
-            N_WARNING (LOG_CAT "invalid value type for role '%s', key '%s'",
-                               entry->role, key);
+            N_WARNING (LOG_CAT "invalid value type for key '%s'",
+                               key);
             continue;
         }
 
@@ -453,7 +453,10 @@ hash_table_add_cb (gpointer data, gpointer user_data)
     GSList         *entries = NULL;
 
     if ((entries = g_hash_table_lookup (stream_restore_role_map, c->key))) {
+        gpointer stolen_key = NULL;
         entries = g_slist_append (entries, e);
+        g_hash_table_steal_extended (stream_restore_role_map, c->key, &stolen_key, NULL);
+        g_hash_table_insert (stream_restore_role_map, stolen_key, entries);
     } else {
         entries = g_slist_append (entries, e);
         g_hash_table_insert (stream_restore_role_map,

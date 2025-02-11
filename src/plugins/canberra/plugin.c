@@ -132,7 +132,7 @@ canberra_sink_prepare (NSinkInterface *iface, NRequest *request)
     N_DEBUG (LOG_CAT "sink prepare");
 
     CanberraData *data = g_slice_new0 (CanberraData);
-    NProplist *props = props = (NProplist*) n_request_get_properties (request);
+    NProplist *props = (NProplist*) n_request_get_properties (request);
 
     data->request    = request;
     data->iface      = iface;
