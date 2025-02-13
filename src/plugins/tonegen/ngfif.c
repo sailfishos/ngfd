@@ -49,9 +49,7 @@ static void destroy_handler(gpointer p)
 
 struct ngfif *ngfif_create(struct tonegend *t)
 {
-    struct ngfif *ngfif = t->ngfd_ctx;
-
-    ngfif = g_new0(struct ngfif, 1);
+    struct ngfif *ngfif = g_new0(struct ngfif, 1);
     ngfif->tonegend = t;
     ngfif->hash = g_hash_table_new_full(g_str_hash, g_str_equal,
                                         NULL, destroy_handler);
