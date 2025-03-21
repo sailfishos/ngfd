@@ -3,6 +3,7 @@ This file is part of ngfd / tone-generator
 
 Copyright (C) 2010 Nokia Corporation.
               2015 Jolla Ltd.
+Copyright (c) 2025 Jolla Mobile Ltd
 
 This library is free software; you can redistribute
 it and/or modify it under the terms of the GNU Lesser General Public
@@ -82,27 +83,30 @@ struct tone *tone_create(struct stream *stream,
                          uint32_t       start,
                          uint32_t       duration)
 {
-    struct tone *link = NULL;
-    uint32_t     time = stream->time;
-    struct tone *next = (struct tone *)stream->data;
-    struct tone *tone;
-
     if (!volume || !period || !play)
         return NULL;
 
-    if ((tone = (struct tone *) calloc(1, sizeof(struct tone))) == NULL) {
+    struct tone *link = NULL;
+    uint32_t     time = stream->time;
+    struct tone *next = stream->data;
+    struct tone *tone;
+
+
+    if (!(tone = calloc(1, sizeof *tone))) {
         N_ERROR(LOG_CAT "%s(): Can't allocate memory", __FUNCTION__);
         return NULL;
     }
 
     if (tone_chainable(type) && duration > 0) {
-        for (link = (struct tone *)stream->data;   link;   link = link->next) {
+        for (link = stream->data; link; link = link->next) {
             if (link->type == type) {
                 while (link->chain)
                     link = link->chain;
 
                 next = NULL;
                 time = link->end / SCALE;
+                // link != NULL && next == NULL -> tone will be
+                // added to end of chain, not to stream head
                 break;
             }
         }
@@ -120,8 +124,9 @@ struct tone *tone_create(struct stream *stream,
 
     setup_envelop_for_tone(tone, type, play, duration);
 
-    if (!freq)
+    if (!freq) {
         tone->backend = BACKEND_UNKNOWN;
+    }
     else {
         tone->backend = BACKEND_SINGEN;
         singen_init(&tone->singen, freq, stream->rate, volume);
@@ -131,7 +136,7 @@ struct tone *tone_create(struct stream *stream,
     if (link)
         link->chain = tone;
     else
-        stream->data = (void *)tone;
+        stream->data = tone;
 
     if (duration)
         stream->flush = false;
@@ -141,39 +146,60 @@ struct tone *tone_create(struct stream *stream,
 
 void tone_destroy(struct tone *tone, bool kill_chain)
 {
+    if (!tone)
+        return;
+
     struct stream  *stream = tone->stream;
-    struct tone    *prev;
-    struct tone    *link;
-    struct tone    *chain;
 
-    for (prev = (struct tone *)&stream->data;    prev;    prev = prev->next) {
-        if (prev->next == tone) {
-
-            TRACE("%s(%s_chain)", __FUNCTION__, kill_chain ? "kill" : "preserve");
-
-            if ((link = tone->chain) == NULL)
-                prev->next = tone->next;
-            else {
-                if (kill_chain) {
-                    for (link = tone->chain;  link;  link = chain) {
-                        chain = link->chain;
-                        envelop_destroy(link->envelop);
-                        free(link);
-                    }
-                    prev->next = tone->next;
-                }
-                else {
-                    prev->next = link;
-                    link->next = tone->next;
-                }
-            }
-            envelop_destroy(tone->envelop);
-            free(tone);
-            return;
-        }
+    if (!stream) {
+        N_ERROR(LOG_CAT "%s(): called with NULL stream", __FUNCTION__);
+        return;
     }
 
-    N_ERROR(LOG_CAT "%s(): Can't find the stream to be destoyed", __FUNCTION__);
+    for (struct tone **iter = (struct tone **)&stream->data; ; ) {
+        if (!*iter) {
+            N_ERROR(LOG_CAT "%s(): Can't find the stream to be destoyed", __FUNCTION__);
+            return;
+        }
+
+        if (*iter != tone) {
+            iter = &(*iter)->next;
+            continue;
+        }
+
+        // optionally flush chained items
+        if (kill_chain) {
+            struct tone *head;
+            while ((head = tone->chain)) {
+                tone->chain = head->chain;
+                head->chain = NULL;
+                envelop_destroy(head->envelop);
+                head->envelop = NULL;
+                free(head);
+            }
+        }
+
+        // pull in chained tone if one (still) exists,
+        // otherwise continue from the next tone
+        struct tone *head = tone->chain;
+        if (head) {
+            head->next = tone->next;
+            *iter = head;
+        }
+        else {
+            *iter = tone->next;
+        }
+
+        // clear and release tone object
+        envelop_destroy(tone->envelop);
+        tone->envelop = NULL;
+        tone->next    = NULL;
+        tone->chain   = NULL;
+        tone->stream  = NULL;
+
+        free(tone);
+        return;
+    }
 }
 
 
@@ -258,16 +284,14 @@ uint32_t tone_write_callback(struct stream *stream, int16_t *buf, int len)
 
 void tone_destroy_callback(void *data)
 {
-    struct stream *stream;
-    struct tone   *tone;
-
-    if ((tone = (struct tone *)data) != NULL) {
-        stream = tone->stream;
-
-        if (stream->data != data)
+    struct tone *tone = data;
+    if (tone) {
+        struct stream *stream = tone->stream;
+        if (stream->data != data) {
             N_ERROR(LOG_CAT "%s(): Confused with data structures", __FUNCTION__);
+        }
         else {
-            while ((tone = (struct tone *)stream->data) != NULL)
+            while ((tone = stream->data))
                 tone_destroy(tone, true);
         }
     }
