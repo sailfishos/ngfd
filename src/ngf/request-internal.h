@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010 Nokia Corporation.
  * Contact: Xun Chen <xun.chen@nokia.com>
+ * Copyright (c) 2025 Jolla Mobile Ltd
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -38,9 +39,9 @@ struct _NRequest
     NProplist       *original_properties;
 
     guint            id;                    /* unique request identifier */
-    NEvent          *event;
-    NCore           *core;
-    NInputInterface *input_iface;
+    NEvent          *event;                 /* borrowed reference */
+    NCore           *core;                  /* borrowed reference */
+    NInputInterface *input_iface;           /* borrowed reference */
 
     gboolean         is_paused;
     gboolean         is_fallback;
@@ -56,7 +57,7 @@ struct _NRequest
     GList           *sinks_playing;         /* sinks currently playing */
     GList           *sinks_resync;
     GList           *stop_list;
-    NSinkInterface  *master_sink;
+    NSinkInterface  *master_sink;           /* borrowed reference */
 
     guint            max_timeout_id;
     guint            timeout_ms;

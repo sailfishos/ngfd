@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010 Nokia Corporation.
  * Contact: Xun Chen <xun.chen@nokia.com>
+ * Copyright (c) 2025 Jolla Mobile Ltd
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -78,18 +79,34 @@ n_request_new_with_event_and_properties (const char *event, const NProplist *pro
 void
 n_request_free (NRequest *request)
 {
-    if (request->properties) {
-        n_proplist_free (request->properties);
-        request->properties = NULL;
-    }
+    // Release dynamic resources
+    g_list_free (request->stop_list), request->stop_list = NULL;
+    g_list_free (request->sinks_resync), request->sinks_resync = NULL;
+    g_list_free (request->sinks_playing), request->sinks_playing = NULL;
+    g_list_free (request->sinks_prepared), request->sinks_prepared = NULL;
+    g_list_free (request->sinks_preparing), request->sinks_preparing = NULL;
+    g_list_free (request->all_sinks), request->all_sinks = NULL;
 
-    if (request->original_properties) {
-        n_proplist_free (request->original_properties);
-        request->original_properties = NULL;
-    }
+    n_proplist_free (request->properties), request->properties = NULL;
+    n_proplist_free (request->original_properties), request->original_properties = NULL;
 
-    g_free (request->name);
-    request->name = NULL;
+    if( request->play_source_id )
+        g_source_remove(request->play_source_id), request->play_source_id = 0;
+    if( request->stop_source_id )
+        g_source_remove(request->stop_source_id), request->stop_source_id = 0;
+    if( request->max_timeout_id )
+        g_source_remove(request->max_timeout_id), request->max_timeout_id = 0;
+
+    g_free (request->name), request->name = NULL;
+
+    // Clear borrowed references
+    request->event               = NULL;
+    request->core                = NULL;
+    request->input_iface         = NULL;
+    request->master_sink         = NULL;
+
+    // Invalidate id
+    request->id = 0;
 
     g_slice_free (NRequest, request);
 }
