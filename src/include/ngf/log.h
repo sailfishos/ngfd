@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010 Nokia Corporation.
  * Contact: Xun Chen <xun.chen@nokia.com>
+ * Copyright (c) 2025 Jolla Mobile Ltd
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -28,10 +29,13 @@ typedef enum _NLogTarget
 {
     /** Suppress logging */
     N_LOG_TARGET_NONE = 0,
-    
+
+    /** Direct logging to stderr */
+    N_LOG_TARGET_STDERR,
+
     /** Direct logging to stdout */
     N_LOG_TARGET_STDOUT,
-    
+
     /** Direct logging to syslog */
     N_LOG_TARGET_SYSLOG
 } NLogTarget;
@@ -89,7 +93,7 @@ void n_log_message    (NLogLevel level, const char *function, int line, const ch
 /** Log function enter message */
 #define N_ENTER(...) \
     do {  n_log_message (N_LOG_LEVEL_ENTER, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); } while(0)
-    
+
 /** Log debug message */
 #define N_DEBUG(...) \
     do { n_log_message (N_LOG_LEVEL_DEBUG, (const char*) __FUNCTION__, __LINE__, __VA_ARGS__); } while(0)
