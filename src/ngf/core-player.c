@@ -58,7 +58,7 @@ static int      n_core_prepare_sinks            (GList *sinks, NRequest *request
 static gboolean
 n_core_max_timeout_reached_cb (gpointer userdata)
 {
-    NRequest *request = (NRequest*) userdata;
+    NRequest *request = userdata;
 
     N_DEBUG (LOG_CAT "maximum timeout reached, stopping request.");
 
@@ -67,7 +67,7 @@ n_core_max_timeout_reached_cb (gpointer userdata)
 
     n_core_stop_request (request->core, request, 0);
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void
@@ -150,9 +150,8 @@ n_core_query_capable_sinks (NRequest *request)
 
     NCore           *core  = request->core;
     GList           *sinks = NULL;
-    NSinkInterface **iter  = NULL;
 
-    for (iter = core->sinks; *iter; ++iter) {
+    for (NSinkInterface **iter = core->sinks; *iter; ++iter) {
         if ((*iter)->funcs.can_handle && !(*iter)->funcs.can_handle (*iter, request))
             continue;
 
@@ -207,18 +206,19 @@ n_core_sink_in_list (GList *sinks, NSinkInterface *sink)
     if (!sinks || !sink)
         return FALSE;
 
-    return g_list_find (sinks, sink) != NULL ? TRUE : FALSE;
+    return g_list_find (sinks, sink) ? TRUE : FALSE;
 }
 
 static int
 n_core_sink_priority_cmp (gconstpointer in_a, gconstpointer in_b)
 {
-    NSinkInterface *a = (NSinkInterface*) in_a;
-    NSinkInterface *b = (NSinkInterface*) in_b;
+    const NSinkInterface *a = in_a;
+    const NSinkInterface *b = in_b;
 
     if (a->priority > b->priority)
         return -1;
-    else if (b->priority > a->priority)
+
+    if (b->priority > a->priority)
         return 1;
 
     return 0;
@@ -227,10 +227,8 @@ n_core_sink_priority_cmp (gconstpointer in_a, gconstpointer in_b)
 static gboolean
 n_core_sink_synchronize_done_cb (gpointer userdata)
 {
-    NRequest       *request   = (NRequest*) userdata;
+    NRequest       *request   = userdata;
     NCore          *core      = request->core;
-    GList          *iter      = NULL;
-    NSinkInterface *sink      = NULL;
 
     /* all sinks have been synchronized for the request. call play for every
        prepared sink. */
@@ -243,8 +241,8 @@ n_core_sink_synchronize_done_cb (gpointer userdata)
     /* setup the maximum timeout callback. */
     n_core_setup_max_timeout (request);
 
-    for (iter = g_list_first (request->sinks_prepared); iter; iter = g_list_next (iter)) {
-        sink = (NSinkInterface*) iter->data;
+    for (GList *iter = g_list_first (request->sinks_prepared); iter; iter = g_list_next (iter)) {
+        NSinkInterface *sink = iter->data;
 
         if (!sink->funcs.play (sink, request)) {
             N_WARNING (LOG_CAT "sink '%s' failed play request '%s'",
@@ -264,7 +262,7 @@ n_core_sink_synchronize_done_cb (gpointer userdata)
     g_list_free (request->sinks_prepared);
     request->sinks_prepared = NULL;
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void
@@ -299,11 +297,8 @@ n_core_pending_synchronize_done (NRequest *request)
 static void
 n_core_stop_sinks (GList *sinks, NRequest *request)
 {
-    GList          *iter = NULL;
-    NSinkInterface *sink = NULL;
-
-    for (iter = g_list_first (sinks); iter; iter = g_list_next (iter)) {
-        sink = (NSinkInterface*) iter->data;
+    for (GList *iter = g_list_first (sinks); iter; iter = g_list_next (iter)) {
+        NSinkInterface *sink = iter->data;
         if (sink && sink->funcs.stop)
             sink->funcs.stop (sink, request);
     }
@@ -315,11 +310,9 @@ n_core_prepare_sinks (GList *sinks, NRequest *request)
     g_assert (request != NULL);
 
     NCore          *core = request->core;
-    GList          *iter = NULL;
-    NSinkInterface *sink = NULL;
 
-    for (iter = g_list_first (sinks); iter; iter = g_list_next (iter)) {
-        sink = (NSinkInterface*) iter->data;
+    for (GList *iter = g_list_first (sinks); iter; iter = g_list_next (iter)) {
+        NSinkInterface *sink = iter->data;
 
         if (!sink->funcs.prepare) {
             N_DEBUG (LOG_CAT "sink has no prepare, synchronizing immediately");
@@ -343,14 +336,12 @@ n_core_prepare_sinks (GList *sinks, NRequest *request)
 }
 
 static void
-n_translate_fallback (const char *key, const NValue *value, gpointer userdata)
+n_translate_fallback_cb (const char *key, const NValue *value, gpointer userdata)
 {
-    NProplist *props = (NProplist*) userdata;
-    gchar *new_key = NULL;
+    NProplist *props = userdata;
 
     if (g_str_has_suffix (key, FALLBACK_SUFFIX)) {
-        new_key = g_strdup (key);
-        new_key[strlen (key) - strlen (FALLBACK_SUFFIX)] = 0;
+        gchar *new_key = g_strndup(key, strlen (key) - strlen (FALLBACK_SUFFIX));
         n_proplist_set (props, new_key, n_value_copy (value));
         g_free (new_key);
     }
@@ -361,7 +352,7 @@ n_find_fallback_cb (const char *key, const NValue *value, gpointer userdata)
 {
     (void) value;
 
-    gboolean *has_fallbacks = (gboolean*) userdata;
+    gboolean *has_fallbacks = userdata;
     if (g_str_has_suffix (key, FALLBACK_SUFFIX))
         *has_fallbacks = TRUE;
 }
@@ -369,7 +360,7 @@ n_find_fallback_cb (const char *key, const NValue *value, gpointer userdata)
 static gboolean
 n_core_request_done_cb (gpointer userdata)
 {
-    NRequest  *request       = (NRequest*) userdata;
+    NRequest  *request       = userdata;
     NRequest  *fallback      = NULL;
     NCore     *core          = request->core;
     gboolean   has_fallbacks = FALSE;
@@ -395,7 +386,8 @@ n_core_request_done_cb (gpointer userdata)
         n_core_send_error (request, "request failed!");
         goto done;
     }
-    else if (!request->has_failed || request->is_fallback) {
+
+    if (!request->has_failed || request->is_fallback) {
         /* we completed the original one or fallback, complete the event. */
         n_core_send_reply (request, N_CORE_EVENT_COMPLETED);
         goto done;
@@ -428,14 +420,14 @@ n_core_request_done_cb (gpointer userdata)
 
     n_core_play_request (core, fallback);
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 
 done:
     /* free the actual request */
     N_DEBUG (LOG_CAT "request '%s' done", request->name);
     n_request_free (request);
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void
@@ -463,8 +455,6 @@ n_core_pending_done (NRequest *request)
 int
 n_core_play_request (NCore *core, NRequest *request)
 {
-    NProplist *new_props     = NULL;
-
     g_assert (core != NULL);
     g_assert (request != NULL);
 
@@ -502,9 +492,9 @@ n_core_play_request (NCore *core, NRequest *request)
 
     /* check if fallbacks need to be used */
     if (request->is_fallback) {
-        new_props = n_proplist_copy (request->properties);
+        NProplist *new_props = n_proplist_copy (request->properties);
         n_proplist_foreach (request->properties,
-            n_translate_fallback, new_props);
+            n_translate_fallback_cb, new_props);
         n_proplist_free (request->properties);
         request->properties  = new_props;
     }
@@ -561,8 +551,6 @@ n_core_pause_request (NCore *core, NRequest *request)
     g_assert (core != NULL);
     g_assert (request != NULL);
 
-    GList          *iter = NULL;
-    NSinkInterface *sink = NULL;
     int all_paused = 1;
 
     if (request->is_paused) {
@@ -571,8 +559,8 @@ n_core_pause_request (NCore *core, NRequest *request)
         return TRUE;
     }
 
-    for (iter = g_list_first (request->all_sinks); iter; iter = g_list_next (iter)) {
-        sink = (NSinkInterface*) iter->data;
+    for (GList *iter = g_list_first (request->all_sinks); iter; iter = g_list_next (iter)) {
+        NSinkInterface *sink = iter->data;
 
         if (sink->funcs.pause && !sink->funcs.pause (sink, request)) {
             N_WARNING (LOG_CAT "sink '%s' failed to pause request '%s'",
@@ -594,8 +582,6 @@ n_core_resume_request (NCore *core, NRequest *request)
     g_assert (core != NULL);
     g_assert (request != NULL);
 
-    GList          *iter = NULL;
-    NSinkInterface *sink = NULL;
     int all_resumed = 1;
 
     if (!request->is_paused) {
@@ -604,8 +590,8 @@ n_core_resume_request (NCore *core, NRequest *request)
         return TRUE;
     }
 
-    for (iter = g_list_first (request->all_sinks); iter; iter = g_list_next (iter)) {
-        sink = (NSinkInterface*) iter->data;
+    for (GList *iter = g_list_first (request->all_sinks); iter; iter = g_list_next (iter)) {
+        NSinkInterface *sink = iter->data;
 
         if (sink->funcs.play && !sink->funcs.play (sink, request)) {
             N_WARNING (LOG_CAT "sink '%s' failed to resume (play) request '%s'",

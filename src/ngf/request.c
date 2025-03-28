@@ -42,7 +42,7 @@ n_request_copy (const NRequest *request)
 
     copy                = g_slice_new0 (NRequest);
     copy->id            = request->id;
-    copy->name          = request->name ? g_strdup (request->name) : NULL;
+    copy->name          = g_strdup (request->name);
     copy->input_iface   = request->input_iface;
     if (request->original_properties)
         copy->properties = n_proplist_copy (request->original_properties);
@@ -71,7 +71,7 @@ n_request_new_with_event_and_properties (const char *event, const NProplist *pro
 
     NRequest *request   = n_request_new ();
     request->name       = g_strdup (event);
-    request->properties = n_proplist_copy ((NProplist*) properties);
+    request->properties = n_proplist_copy (properties);
 
     return request;
 }
@@ -114,13 +114,13 @@ n_request_free (NRequest *request)
 unsigned int
 n_request_get_id (NRequest *request)
 {
-    return (request != NULL) ? request->id : 0;
+    return request ? request->id : 0;
 }
 
 const char*
 n_request_get_name (NRequest *request)
 {
-    return (request != NULL) ? (const char*) request->name : NULL;
+    return request ? request->name : NULL;
 }
 
 void
@@ -136,7 +136,7 @@ n_request_set_properties (NRequest *request, NProplist *properties)
 const NProplist*
 n_request_get_properties (NRequest *request)
 {
-    return (request != NULL) ? (const NProplist*) request->properties : NULL;
+    return request ? request->properties : NULL;
 }
 
 void
@@ -178,7 +178,7 @@ n_request_is_fallback (NRequest *request)
 const NEvent*
 n_request_get_event (NRequest *request)
 {
-    return (request != NULL) ? (const NEvent*) request->event : NULL;
+    return request ? request->event : NULL;
 }
 
 void
@@ -193,7 +193,5 @@ n_request_set_timeout (NRequest *request, guint timeout)
 guint
 n_request_get_timeout (NRequest *request)
 {
-    return (request != NULL) ? request->timeout_ms : 0;
+    return request ? request->timeout_ms : 0;
 }
-
-
