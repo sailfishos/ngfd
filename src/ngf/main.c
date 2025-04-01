@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010 Nokia Corporation.
  * Contact: Xun Chen <xun.chen@nokia.com>
+ * Copyright (c) 2025 Jolla Mobile Ltd
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -26,6 +27,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <stdio.h>
 
 #ifdef HAVE_SYSTEMD
 #include <systemd/sd-daemon.h>
@@ -176,11 +178,16 @@ remove_signal_handlers (AppData *app)
 int
 main (int argc, char *argv[])
 {
-    AppData app;
+    /* In case we should log to stdout / stderr,
+     * we do not want to use block buffering. */
+    setlinebuf(stdout);
+    setlinebuf(stderr);
 
-    memset (&app, 0, sizeof (app));
-    app.default_loglevel = N_LOG_LEVEL_ERROR;
-    app.use_default_loglevel = TRUE;
+    AppData app = {
+        .default_loglevel = N_LOG_LEVEL_WARNING,
+        .use_default_loglevel = TRUE,
+    };
+
     n_log_initialize (app.default_loglevel);
 
     if (!parse_cmdline (argc, argv, &app))
