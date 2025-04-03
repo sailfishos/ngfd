@@ -779,6 +779,10 @@ n_core_fail_sink (NCore *core, NSinkInterface *sink, NRequest *request)
     N_WARNING (LOG_CAT "sink '%s' failed request '%s'",
         sink->name, request->name);
 
+    /* Do not set 'has_failed' if already stopping */
+    if (n_core_pending_done (request))
+        return;
+
     /* sink failed, so request failed */
     request->has_failed = TRUE;
     n_core_setup_done (request, 0);
