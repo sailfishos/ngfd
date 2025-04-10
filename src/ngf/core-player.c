@@ -506,10 +506,11 @@ n_core_play_request (NCore *core, NRequest *request)
     all_sinks = n_core_query_capable_sinks (request);
     all_sinks = n_core_fire_filter_sinks_hook (request, all_sinks);
 
-    /* if no sinks left, then nothing to do. */
+    /* if no sinks left, then nothing to do. can be that no sinks support the event
+       or that their state / configuration has specific feedback disabled */
 
     if (!all_sinks) {
-        N_WARNING (LOG_CAT "no sinks that can handle the request '%s'",
+        N_DEBUG (LOG_CAT "no sinks that can and want to handle the request '%s'",
             request->name);
         goto fail_request;
     }
