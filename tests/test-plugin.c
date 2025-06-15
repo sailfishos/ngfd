@@ -52,15 +52,19 @@ START_TEST (test_get_params)
 }
 END_TEST
 
-static int
-plugin_play ()
+
+static int plugin_play(NSinkInterface *iface, NRequest *request)
 {
+    (void)iface;
+    (void)request;
     return TRUE;
 }
 
-static void
-plugin_stop ()
-{}
+static void plugin_stop(NSinkInterface *iface, NRequest *request)
+{
+    (void)iface;
+    (void)request;
+}
 
 START_TEST (test_register_sink)
 {
