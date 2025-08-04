@@ -97,7 +97,6 @@ struct _StreamData
     gboolean synchronization_pending;
     guint delay_synchronize_source;
     guint fake_play_source;
-    guint delay_play_source;
     guint delay_stop_source;
 
     FadeEffect *fade;
@@ -425,9 +424,6 @@ stream_clear_delays (StreamData *stream)
 
     if (stream->delay_synchronize_source)
         g_source_remove (stream->delay_synchronize_source), stream->delay_synchronize_source = 0;
-
-    if (stream->delay_play_source)
-        g_source_remove (stream->delay_play_source), stream->delay_play_source = 0;
 
     if (stream->delay_stop_source)
         g_source_remove (stream->delay_stop_source), stream->delay_stop_source = 0;
