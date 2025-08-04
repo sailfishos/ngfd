@@ -479,7 +479,10 @@ immvibe_sink_stop (NSinkInterface *iface, NRequest *request)
     (void) iface;
 
     ImmvibeData *data = (ImmvibeData*) n_request_get_data (request, IMMVIBE_KEY);
-    g_assert (data != NULL);
+    if (!data)
+        return;
+
+    n_request_store_data (request, IMMVIBE_KEY, NULL);
 
     if (data->id > 0) {
         ImmVibeStopPlayingEffect (device, data->id);
@@ -497,8 +500,6 @@ immvibe_sink_stop (NSinkInterface *iface, NRequest *request)
 
     g_free       (data->pattern);
     g_slice_free (ImmvibeData, data);
-
-    n_request_store_data (request, IMMVIBE_KEY, NULL);
 }
 
 N_PLUGIN_LOAD (plugin)

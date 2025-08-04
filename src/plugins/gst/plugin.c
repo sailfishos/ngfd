@@ -1228,7 +1228,11 @@ gst_sink_stop (NSinkInterface *iface, NRequest *request)
     N_DEBUG (LOG_CAT "request stop");
 
     stream = n_request_get_data (request, GST_KEY);
-    g_assert (stream != NULL);
+    if (!stream)
+        return;
+
+    n_request_store_data (request, GST_KEY, NULL);
+
     prev_state = stream->state;
     stream->state = STREAM_STATE_STOPPED;
 

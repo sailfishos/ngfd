@@ -253,7 +253,10 @@ canberra_sink_stop (NSinkInterface *iface, NRequest *request)
     (void) iface;
 
     CanberraData *data = (CanberraData*) n_request_get_data (request, CANBERRA_KEY);
-    g_assert (data != NULL);
+    if (!data)
+        return;
+
+    n_request_store_data (request, CANBERRA_KEY, NULL);
 
     if (data->complete_cb_id > 0)
         g_source_remove (data->complete_cb_id);

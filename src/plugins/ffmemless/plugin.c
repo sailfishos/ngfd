@@ -769,6 +769,11 @@ static void ffm_sink_stop(NSinkInterface *iface, NRequest *request)
 
 	data = (struct ffm_effect_data *)n_request_get_data (request, FFM_KEY);
 
+	if (!data)
+		return;
+
+	n_request_store_data(request, FFM_KEY, NULL);
+
 	if (data->poll_id) {
 		g_source_remove (data->poll_id);
 		data->poll_id = 0;
