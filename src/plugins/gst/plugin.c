@@ -1236,11 +1236,12 @@ gst_sink_stop (NSinkInterface *iface, NRequest *request)
     prev_state = stream->state;
     stream->state = STREAM_STATE_STOPPED;
 
-    stream_clear_delays (stream);
-
     if (prev_state == STREAM_STATE_PLAYING &&
         stream->pipeline &&
         (stream->delay_stop || stream->fade_stop)) {
+
+        stream_clear_delays (stream);
+        stop_stream_fade (stream);
 
         if (stream->delay_stop) {
             N_DEBUG (LOG_CAT "setup delayed stop");
