@@ -125,7 +125,10 @@ fake_sink_stop (NSinkInterface *iface, NRequest *request)
     (void) iface;
 
     FakeData *data = (FakeData*) n_request_get_data (request, FAKE_KEY);
-    g_assert (data != NULL);
+    if (!data)
+        return;
+
+    n_request_store_data (request, FAKE_KEY, NULL);
 
     if (data->timeout_id > 0) {
         g_source_remove (data->timeout_id);

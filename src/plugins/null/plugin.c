@@ -107,7 +107,10 @@ null_sink_stop (NSinkInterface *iface, NRequest *request)
     N_DEBUG (LOG_CAT "sink stop");
 
     data = n_request_get_data (request, NULL_DATA_KEY);
-    g_assert (data);
+    if (!data)
+        return;
+
+    n_request_store_data (request, NULL_DATA_KEY, NULL);
 
     if (data->source_id > 0)
         g_source_remove (data->source_id);

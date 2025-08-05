@@ -207,7 +207,10 @@ mce_sink_stop (NSinkInterface *iface, NRequest *request)
     NCore *core;
 
     MceData *data = (MceData*) n_request_get_data (request, MCE_KEY);
-    g_assert (data != NULL);
+    if (!data)
+        return;
+
+    n_request_store_data (request, MCE_KEY, NULL);
 
     core = n_sink_interface_get_core (iface);
 

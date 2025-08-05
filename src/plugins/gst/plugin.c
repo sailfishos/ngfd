@@ -97,7 +97,6 @@ struct _StreamData
     gboolean synchronization_pending;
     guint delay_synchronize_source;
     guint fake_play_source;
-    guint delay_play_source;
     guint delay_stop_source;
 
     FadeEffect *fade;
@@ -425,9 +424,6 @@ stream_clear_delays (StreamData *stream)
 
     if (stream->delay_synchronize_source)
         g_source_remove (stream->delay_synchronize_source), stream->delay_synchronize_source = 0;
-
-    if (stream->delay_play_source)
-        g_source_remove (stream->delay_play_source), stream->delay_play_source = 0;
 
     if (stream->delay_stop_source)
         g_source_remove (stream->delay_stop_source), stream->delay_stop_source = 0;
@@ -1228,15 +1224,20 @@ gst_sink_stop (NSinkInterface *iface, NRequest *request)
     N_DEBUG (LOG_CAT "request stop");
 
     stream = n_request_get_data (request, GST_KEY);
-    g_assert (stream != NULL);
+    if (!stream)
+        return;
+
+    n_request_store_data (request, GST_KEY, NULL);
+
     prev_state = stream->state;
     stream->state = STREAM_STATE_STOPPED;
-
-    stream_clear_delays (stream);
 
     if (prev_state == STREAM_STATE_PLAYING &&
         stream->pipeline &&
         (stream->delay_stop || stream->fade_stop)) {
+
+        stream_clear_delays (stream);
+        stop_stream_fade (stream);
 
         if (stream->delay_stop) {
             N_DEBUG (LOG_CAT "setup delayed stop");
