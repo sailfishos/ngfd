@@ -115,7 +115,7 @@ static const char *ffm_get_str_value(const NProplist *props, const char *prefix,
 					const char *key)
 {
 	char full_key[FFM_MAX_PARAM_LEN];
-	sprintf(full_key, "%s%s", prefix, key);
+	snprintf(full_key, sizeof full_key, "%s%s", prefix, key);
 	return n_proplist_get_string(props, full_key);
 }
 
@@ -736,9 +736,9 @@ static int ffm_sink_play(NSinkInterface *iface, NRequest *request)
 
 	data = (struct ffm_effect_data *)n_request_get_data (request, FFM_KEY);
 
-	N_DEBUG (LOG_CAT "play id %d, repeat %d times, iface 0x%x, "
-			 "req 0x%x data 0x%x", data->id, data->repeat,
-			 data->iface, data->request, data);
+	N_DEBUG (LOG_CAT "play id %d, repeat %d times, iface %p, "
+		 "req %p data %p", data->id, data->repeat,
+		 (void *)data->iface, (void *)data->request, (void *)data);
 
 	return ffm_play(data, data->repeat);
 }
