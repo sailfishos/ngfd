@@ -202,9 +202,9 @@ struct stream *stream_create(struct ausrv *ausrv,
             snprintf(tlstr, sizeof(tlstr), "%u", battr.tlength);
 
         if (battr.minreq == (uint32_t)-1)
-            snprintf(bfstr, sizeof(tlstr), "<default>");
+            snprintf(bfstr, sizeof(bfstr), "<default>");
         else
-            snprintf(bfstr, sizeof(tlstr), "%u", battr.minreq);
+            snprintf(bfstr, sizeof(bfstr), "%u", battr.minreq);
 
         TRACE("Requested buffer attributes:\n"
               "   tlength  %s\n"
