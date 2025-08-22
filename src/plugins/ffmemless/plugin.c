@@ -684,7 +684,7 @@ static int ffm_sink_prepare(NSinkInterface *iface, NRequest *request)
 	const NProplist *props = n_request_get_properties (request);
 	const struct ffm_effect_data *data;
 	struct ffm_effect_data *copy;
-	gboolean repeat;
+	gint repeat = -1; /* -1 not set, 1 TRUE, 0 FALSE */
 	guint playback_time;
 	const gchar *key;
 
@@ -704,9 +704,21 @@ static int ffm_sink_prepare(NSinkInterface *iface, NRequest *request)
 	copy->request = request;
 	copy->iface = iface;
 
-	repeat = n_proplist_get_bool (props, FFM_SOUND_REPEAT_KEY);
+	/* If new haptic.repeat key is defined use that, otherwise revert to
+	 * following sound.repeat to determine looping. */
+	if (n_proplist_has_key (props, N_HAPTIC_REPEAT_KEY))
+		repeat = n_proplist_get_bool (props, N_HAPTIC_REPEAT_KEY) ? 1 : 0;
+	else
+		repeat = n_proplist_get_bool (props, FFM_SOUND_REPEAT_KEY) ? 1 : 0;
+
 	playback_time = n_proplist_get_uint (props, FFM_HAPTIC_DURATION_KEY);
-	if (repeat || playback_time) {
+
+	/* If haptic.repeat is explicitly set to false then, if
+	 * repeats were infinite -> set repeat to 2 (effectively repeats once)
+	 * repeats was defined -> repeat the original repeat count */
+	if (repeat == 0) {
+		copy->repeat = data->repeat == INT32_MAX ? 2 : data->repeat;
+	} else if (repeat == 1 || playback_time > 0) {
 		/*
 		 * If duration was not defined, it's zero and we don't report playback
 		 * done. Otherwise, as effects are already stored by the kernel we just
