@@ -1229,6 +1229,11 @@ gst_sink_stop (NSinkInterface *iface, NRequest *request)
 
     n_request_store_data (request, GST_KEY, NULL);
 
+    /* Check that stream is active, if it's not then it has already been stopped
+     * and freed */
+    if (g_list_index(active_streams, stream) == -1)
+        return;
+
     prev_state = stream->state;
     stream->state = STREAM_STATE_STOPPED;
 
